@@ -68,7 +68,11 @@ export const shared = {
   uStrata: { value: 0 },
   uCapAmbient: { value: 1 },
   uLamp: { value: 0 },
+  /** where the lantern is: held up and to the left of the eye, so it models what it lights */
+  uLampPos: { value: new Vector3() },
   uDusk: { value: 0 },
+  /** 0 → 1 as the sun touches the horizon: the air opposite it falls into the earth's shadow */
+  uSunset: { value: 0 },
   uTime: { value: 0 },
   uSunDir: { value: new Vector3(0, 1, 0) },
   uSunCol: { value: new Color(1, 1, 1) },
@@ -112,6 +116,21 @@ export type SectionOptions = {
 }
 
 /* ── shared GLSL ───────────────────────────────────────────────────────── */
+
+/**
+ * The colour of the air looking along `d`: warm towards the sun, cool away
+ * from it, and at sunset the side opposite the sun sinks into the blue-violet
+ * of the earth's shadow. Shared by the sky and the haze over the city, so the
+ * far edge of the city dissolves into exactly the sky behind it.
+ */
+export const GLSL_HAZE = /* glsl */ `
+  vec3 hazeTint(vec3 base, vec3 d, vec3 sunDir, float gold, float sunset) {
+    float toSun = pow(max(dot(d, sunDir), 0.0), 3.0);
+    vec3 c = mix(base, base * mix(vec3(0.9, 0.95, 1.07), vec3(1.06, 1.0, 0.91), toSun), gold);
+    float away = smoothstep(0.25, -0.85, dot(normalize(d.xz + 1e-5), normalize(sunDir.xz + 1e-5)));
+    return mix(c, c * vec3(0.6, 0.58, 0.76), away * sunset * 0.7);
+  }
+`
 
 const GLSL_COMMON = /* glsl */ `
   uniform float uGold;
@@ -180,6 +199,11 @@ const GLSL_COMMON = /* glsl */ `
     float g = sNoise(sp * 0.7) * 0.45 + sNoise(sp * 2.9 + 3.0) * 0.33 + sNoise(sp * 11.0 + 7.0) * 0.22;
     c *= 0.86 + 0.26 * g;
     c *= 0.985 + 0.015 * sin(p.y * 6.0 + sNoise(vec2(h * 0.05, p.y)) * 3.0);
+    // nothing was laid down evenly: long lenses of paler sand and darker,
+    // humic silt within each deposit, and the odd tip line where a load was dumped
+    float lens = sNoise(sp * vec2(0.04, 0.55) + layer * 5.3);
+    c *= mix(vec3(1.0), vec3(1.1, 1.05, 0.96), smoothstep(0.6, 0.85, lens));
+    c *= mix(vec3(1.0), vec3(0.8, 0.78, 0.8), smoothstep(0.38, 0.14, lens) * step(layer, 3.5));
     // inclusions, one cell of ~25 cm at a time
     vec2 cell = floor(sp * vec2(4.0, 4.0));
     float r = sHash(cell + layer * 17.0);
@@ -211,6 +235,25 @@ const GLSL_COMMON = /* glsl */ `
     return sLin(mix(paper, c, colourful));
   }
 
+  // the relief of an excavated face: clods and grit, pebbles standing proud,
+  // the vertical scrape of the trowel, and in the bedrock the ledges of its
+  // bedding — a height in metres-ish units, for lighting only
+  float strataRelief(vec3 p) {
+    float depth = surfaceAt(p.xz) - p.y;
+    float h = p.z + p.x * 0.35;
+    vec2 sp = vec2(h, p.y);
+    float r = sNoise(sp * 0.35) * 0.7 + sNoise(sp * 1.1 + 5.0) * 0.45 + sNoise(sp * 3.7 + 3.0) * 0.18;
+    vec2 cell = floor(sp * 4.0);
+    vec2 f = fract(sp * 4.0) - 0.5;
+    float pebble = step(0.86, sHash(cell + 41.0)) * max(0.0, 1.0 - dot(f, f) * 9.0);
+    r += pebble * 0.45;
+    r += (sNoise(vec2(h * 7.0, p.y * 0.9)) - 0.5) * 0.18; // trowel strokes
+    float rock = smoothstep(29.0, 31.0, depth);
+    if (rock <= 0.0) return r;
+    float ledge = smoothstep(0.55, 0.95, fract(p.y * 0.55 + sNoise(vec2(h * 0.04, 1.0)) * 0.8));
+    return mix(r, r * 0.35 + ledge * 0.7, rock);
+  }
+
   // poché: the cut through built matter, solid and quiet, finely hatched
   vec3 pocheColor(vec3 p) {
     vec3 c = mix(vec3(0.58, 0.56, 0.53), vec3(0.30, 0.26, 0.22), uGold);
@@ -229,11 +272,14 @@ const FRONT_PARS = /* glsl */ `
   uniform float uAshlar;
   uniform float uBaseY;
   uniform float uLamp;
+  uniform vec3 uLampPos;
   varying vec3 vWorldPos;
   varying vec3 vWorldNormal;
   varying vec3 vInfo;
   float sWinLit = 0.0;
   uniform vec3 uSunDir;
+  uniform float uSunset;
+  ${GLSL_HAZE}
   #ifdef SECTION_WATER
     uniform float uTime;
     uniform float uReflect;
@@ -256,18 +302,43 @@ const FRONT_PARS = /* glsl */ `
     return mix(tile, 0.95, smoothstep(0.25, 0.8, max(chAA, coAA)));
   }
 
-  float ashlarMask(vec3 p, vec3 n) {
+  // one joint of a course or a bond, jittered: which cell x (in cell units)
+  // falls in once each boundary k is moved by j(k), and how far it is from
+  // the nearest boundary — irregular masonry from two hashes
+  vec2 jitterCell(float x, float row, float seed, float amp) {
+    float k = floor(x), f = x - k;
+    float jl = (sHash(vec2(k, row + seed)) - 0.5) * amp;
+    float jr = (sHash(vec2(k + 1.0, row + seed)) - 0.5) * amp;
+    if (f < jl) { k -= 1.0; f += 1.0; jr = jl; jl = (sHash(vec2(k, row + seed)) - 0.5) * amp; }
+    else if (f > 1.0 + jr) { k += 1.0; f -= 1.0; jl = jr; jr = (sHash(vec2(k + 1.0, row + seed)) - 0.5) * amp; }
+    return vec2(k, min(f - jl, 1.0 + jr - f));
+  }
+
+  // dressed ashlar as masons lay it, not as a grid: courses of slightly
+  // different heights, blocks of different lengths, each from its own bed of
+  // the quarry, arrises softened by weather. Returns (darkening, block tone ±0.5)
+  vec2 ashlar(vec3 p, vec3 n) {
     vec2 uv = abs(n.x) > abs(n.z) ? p.zy : p.xy;
     if (abs(n.y) > 0.6) uv = p.xz;
-    float course = floor(uv.y / 0.55);
-    float off = mod(course, 2.0) * 0.55;
-    vec2 f = vec2(fract((uv.x + off) / 1.1), fract(uv.y / 0.55));
-    vec2 aa = fwidth(uv) / vec2(1.1, 0.55) * 1.5;
-    float jx = smoothstep(0.0, 0.03 + aa.x, f.x) * smoothstep(0.0, 0.03 + aa.x, 1.0 - f.x);
-    float jy = smoothstep(0.0, 0.05 + aa.y, f.y) * smoothstep(0.0, 0.05 + aa.y, 1.0 - f.y);
-    float fade = 1.0 - smoothstep(0.15, 0.5, max(aa.x, aa.y));
-    float tone = sHash(vec2(floor((uv.x + off) / 1.1), course));
-    return ((1.0 - jx * jy) * 0.38 + (tone - 0.5) * 0.14) * fade;
+    const float W = 1.1, H = 0.55;
+    vec2 cy = jitterCell(uv.y / H, 0.0, 7.1, 0.34);
+    vec2 cx = jitterCell(uv.x / W + sHash(vec2(cy.x, 3.3)), cy.x, 0.0, 0.5);
+    float d = min(cx.y * W, cy.y * H); // metres to the nearest joint
+    float aa = length(fwidth(uv)) * 1.2;
+    float joint = 1.0 - smoothstep(0.012, 0.03 + aa, d);
+    float arris = 1.0 - smoothstep(0.03, 0.14 + aa, d);
+    float tone = (sHash(vec2(cx.x, cy.x) + 0.37) - 0.5) * (1.0 - smoothstep(0.25, 0.7, aa));
+    float fade = 1.0 - smoothstep(0.08, 0.3, aa);
+    return vec2((joint * 0.42 + arris * 0.1) * fade + tone * 0.16, tone);
+  }
+
+  // rain: faint vertical runs of darker stone down every wall, settling with
+  // distance before they could shimmer
+  float rainStreaks(vec3 p, vec3 wn) {
+    vec2 tn = normalize(vec2(-wn.z, wn.x) + 1e-5);
+    float u = dot(p.xz, tn) * 1.3;
+    float fade = 1.0 - smoothstep(0.3, 1.0, fwidth(u));
+    return smoothstep(0.52, 0.85, sNoise(vec2(u, p.y * 0.045))) * fade;
   }
 `
 
@@ -310,6 +381,10 @@ const FRONT_COLOR = /* glsl */ `
           * (1.0 - smoothstep(0.78 - aa.y, 0.78 + aa.y, fy)) * step(0.0, hgt);
         float fade = 1.0 - smoothstep(0.2, 0.55, max(aa.x, aa.y));
         float win = max(wx * wy * upper, shop) * fade;
+        // grime washed down from each sill, and rain down the whole wall
+        float sill = wx * step(1.0, fl) * (1.0 - smoothstep(0.0, 0.3, fy)) * fade;
+        col *= 1.0 - sill * 0.14 * gold;
+        if (uGold > 0.0) col *= 1.0 - rainStreaks(p, wn) * 0.1 * gold; // (uniform branch)
         col = mix(col, vec3(0.045, 0.035, 0.03), win * gold * 0.9);
         float lit = step(0.62, sHash(vec2(floor(u) + roofY * 3.7, fl)));
         sWinLit = win * lit * gold;
@@ -347,7 +422,13 @@ const FRONT_COLOR = /* glsl */ `
         top = mix(top, top * vec3(0.84, 0.82, 0.78), smoothstep(0.5, 0.85, sNoise(p.xz * 0.21 + 4.0)) * 0.5);
       #endif
       col = mix(col, mix(uBase * 1.03, top, gold), up);
-      if (uAshlar > 0.0) col *= 1.0 - uAshlar * ashlarMask(p, wn) * (0.4 + 0.6 * gold);
+      if (uAshlar > 0.0) {
+        vec2 a = ashlar(p, wn);
+        col *= 1.0 - uAshlar * a.x * (0.4 + 0.6 * gold);
+        // some blocks warmer and more iron-stained, some paler and greyer
+        col *= mix(vec3(1.0), vec3(1.0) + a.y * vec3(0.09, 0.02, -0.08), uAshlar * gold * 1.4);
+      }
+      if (uGold > 0.0) col *= 1.0 - rainStreaks(p, wn) * 0.12 * gold * (1.0 - up); // (uniform branch)
       col *= mix(0.62, 1.0, smoothstep(0.0, 5.0, p.y - uBaseY));
     #endif
 
@@ -495,12 +576,29 @@ export function makeSectionMaterial(o: SectionOptions) {
       .replace('#include <common>', `#include <common>\n${GLSL_COMMON}\n${FRONT_PARS}`)
       .replace('#include <color_fragment>', `#include <color_fragment>\n${FRONT_COLOR}`)
       .replace(
+        '#include <normal_fragment_maps>',
+        `#include <normal_fragment_maps>
+        #ifdef SECTION_SOIL
+        {
+          // trodden earth: clods and footprints catch the lantern as it rakes along the floor
+          vec3 sp = vWorldPos;
+          float H = sNoise(sp.xz * 0.35) * 0.4 + sNoise(sp.xz * 0.9 + 3.0) * 0.25 + sNoise(sp.xz * 2.2) * 0.3;
+          vec3 dx = dFdx(-vViewPosition), dy = dFdy(-vViewPosition);
+          vec3 r1 = cross(dy, normal), r2 = cross(normal, dx);
+          float det = dot(dx, r1) * (gl_FrontFacing ? 1.0 : -1.0);
+          vec3 grad = sign(det) * (dFdx(H) * r1 + dFdy(H) * r2) * 0.12;
+          normal = normalize(abs(det) * normal - grad);
+        }
+        #endif`,
+      )
+      .replace(
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
         totalEmissiveRadiance += vec3(1.0, 0.58, 0.26) * sWinLit * uDusk * 2.2;
         #ifdef SECTION_SOIL
-          // the same lantern falloff as the cut faces, so floor and walls read as one excavation
-          totalEmissiveRadiance += diffuseColor.rgb * uLamp * (exp(-length(vWorldPos - cameraPosition) * 0.013) * 0.6 + 0.05);
+          // the same lantern falloff as the cut faces, so floor and walls read as one
+          // excavation — kept low, so the real (raking) light shapes the ground
+          totalEmissiveRadiance += diffuseColor.rgb * uLamp * (exp(-length(vWorldPos - uLampPos) * 0.013) * 0.4 + 0.035);
         #endif`,
       )
       .replace(
@@ -510,10 +608,14 @@ export function makeSectionMaterial(o: SectionOptions) {
           // aerial perspective: the haze is warm towards the sun, cool and
           // bluish away from it — only in the golden city, the paper model
           // keeps a neutral mist
-          vec3 vd = normalize(vWorldPos - cameraPosition);
-          float toSun = pow(max(dot(vd, uSunDir), 0.0), 3.0);
-          vec3 fogC = mix(fogColor, fogColor * mix(vec3(0.9, 0.95, 1.07), vec3(1.06, 1.0, 0.91), toSun), uGold);
-          gl_FragColor.rgb = mix(gl_FragColor.rgb, fogC, smoothstep(fogNear, fogFar, vFogDepth));
+          vec3 fogC = hazeTint(fogColor, normalize(vWorldPos - cameraPosition), uSunDir, uGold, uSunset);
+          float fogF = smoothstep(fogNear, fogFar, vFogDepth);
+          // the model of the city ends: seen from afar, its last few hundred
+          // metres melt into the air instead of stopping at an edge
+          vec2 sq = vWorldPos.xz - vec2(uOffset, 0.0) - uAoRect.xy;
+          vec2 e2 = min(sq, 1.0 / uAoRect.zw - sq);
+          fogF = max(fogF, smoothstep(320.0, 0.0, min(e2.x, e2.y)) * smoothstep(500.0, 1100.0, vFogDepth));
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, fogC, fogF);
         }
         #endif`,
       )
@@ -618,6 +720,7 @@ export function makeCapMaterial(half: Half) {
       uniform vec4 uPlane;
       uniform float uCapAmbient;
       uniform float uLamp;
+      uniform vec3 uLampPos;
       uniform vec3 uSunDir;
       uniform vec3 uSunCol;
       uniform vec4 uFog;
@@ -628,8 +731,28 @@ export function makeCapMaterial(half: Half) {
         vec3 cap = poche ? pocheColor(q) : strataColor(q, uStrata);
         float sun = max(dot(-uPlane.xyz, uSunDir), 0.0); // the face looks away from the kept side
         float dist = length(vWorldPos - cameraPosition);
-        float lamp = uLamp * (exp(-dist * 0.013) * 1.0 + 0.06) * (poche ? 0.35 : 1.0);
-        vec3 light = vec3(uCapAmbient * 0.55) + uSunCol * sun * 0.45 * uCapAmbient + vec3(lamp);
+        float lamp = uLamp * (exp(-length(vWorldPos - uLampPos) * 0.013) * 1.0 + 0.06) * (poche ? 0.35 : 1.0);
+        // underground, the lantern rakes across the face and finds its relief:
+        // a bumped normal from screen-space derivatives of the height, lit
+        // relative to the flat face so the overall exposure stays put
+        // (derivatives under a uniform branch only: poche varies per pixel)
+        if (uLamp > 0.001) {
+          vec3 N = -uPlane.xyz;
+          vec3 L = normalize(uLampPos - vWorldPos);
+          float H = strataRelief(q);
+          vec3 dx = dFdx(vWorldPos), dy = dFdy(vWorldPos);
+          vec3 r1 = cross(dy, N), r2 = cross(N, dx);
+          float det = dot(dx, r1);
+          vec3 grad = sign(det) * (dFdx(H) * r1 + dFdy(H) * r2) * 0.16;
+          vec3 Nb = normalize(abs(det) * N - grad);
+          float flat_ = max(abs(dot(N, L)), 0.12);
+          float relief = clamp(abs(dot(Nb, L)) / flat_, 0.35, 1.8);
+          // the fine relief would only shimmer far away: let it settle with distance
+          relief = mix(relief, 1.0, smoothstep(40.0, 140.0, dist));
+          // recesses hold the dark; the lamp is warm, what it does not reach is not
+          if (!poche) lamp *= relief * (0.86 + 0.28 * H);
+        }
+        vec3 light = vec3(uCapAmbient * 0.55) + uSunCol * sun * 0.45 * uCapAmbient + vec3(1.0, 0.9, 0.78) * lamp;
         vec3 c = cap * light;
         c = mix(c, uHorizon, smoothstep(uFog.x, uFog.y, dist));
         gl_FragColor = vec4(c, 1.0);

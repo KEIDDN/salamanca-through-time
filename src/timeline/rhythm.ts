@@ -26,8 +26,8 @@ const WIDTH = 1.25 // film units the slowdown spreads over
 /** Moments that play in slow motion without being rests: the scroll never settles on them. */
 const SLOW = [{ at: 85.4, hold: 1.8, width: 1.4 }] // the stone breaking open
 
-/** The hero frames hold longer: arriving in the square, the golden city, the bridge at sunset. */
-const HERO = new Set(['plaza', 'golden', 'bridge'])
+/** The hero frames hold longer: arriving in the square, the golden city, the bridge at sunset, the cathedrals. */
+const HERO = new Set(['plaza', 'golden', 'bridge', 'cathedral'])
 const heroRests = beats.filter((b) => HERO.has(b.id)).map((b) => b.in + (b.out - b.in) * 0.48)
 const holdAt = (at: number) => (heroRests.some((h) => Math.abs(h - at) < 1e-6) ? HOLD * 1.35 : HOLD)
 

@@ -34,7 +34,7 @@ export const beats: Beat[] = [
     placement: 'low-left',
     eyebrow: '1729 — 1755',
     title: ['Plaza Mayor'],
-    body: ['Eighty-eight arches by Alberto de Churriguera.', 'The living room of the city.'],
+    body: ['Eighty-eight arches by Alberto de Churriguera.', 'Every evening, the whole city still comes here to meet.'],
   },
   {
     id: 'golden',
@@ -55,7 +55,7 @@ export const beats: Beat[] = [
     out: 51.5,
     placement: 'right',
     title: ['Beneath every street,', 'another city.'],
-    body: ['Salamanca is built on top of its own history.'],
+    body: ['Salamanca stands on everything it has ever been.'],
   },
   {
     id: 'medieval',
@@ -73,7 +73,11 @@ export const beats: Beat[] = [
     // above the vanishing point: the gallery walls carry their own labels
     placement: 'top',
     eyebrow: '1218',
-    body: ['Alfonso IX of León founds a university here.', 'It has not stopped teaching since.'],
+    body: [
+      'Alfonso IX of León founds a university. It has never closed.',
+      'Back from four years in an Inquisition cell, Fray Luis de León',
+      'began his lecture: “As we were saying yesterday…”',
+    ],
   },
   {
     id: 'roman',
@@ -82,7 +86,7 @@ export const beats: Beat[] = [
     placement: 'low-left',
     eyebrow: 'I c. AD',
     title: ['Salmantica'],
-    body: ['A station on the Vía de la Plata —', 'the Roman road from Emerita Augusta to Asturica.'],
+    body: ['A stop on the Vía de la Plata, the road from Mérida to Astorga.', 'Soldiers, traders and letters walked these stones.'],
   },
   {
     id: 'vettones',
@@ -104,22 +108,37 @@ export const beats: Beat[] = [
   },
   {
     id: 'bridge',
-    in: 92.2,
-    out: 97.2,
+    in: 89.4,
+    out: 93.3,
     placement: 'low-left',
     eyebrow: 'I c. AD',
     title: ['Puente Romano'],
-    body: ['Fifteen of its twenty-six arches are Roman.', 'Two thousand years, still carrying the city across the river.'],
+    body: ['Fifteen of its twenty-six arches are Roman.', 'For two thousand years it has carried the city across the Tormes.'],
+  },
+  {
+    // the postcard: the cathedral over the river, the moment the whole film was layering towards
+    id: 'cathedral',
+    in: 93.9,
+    out: 98.1,
+    placement: 'top',
+    eyebrow: 'XII c. · 1513 — 1733',
+    title: ['Two Cathedrals'],
+    body: [
+      'When Salamanca outgrew its Romanesque cathedral, it did not tear it down.',
+      'It raised the new one against its walls — two hundred years of Gothic —',
+      'and kept both. Even its faith was built in layers.',
+    ],
   },
   {
     id: 'archive',
-    in: 97.6,
+    in: 98.4,
     out: 101,
-    placement: 'center',
+    // in the sky, above the skyline it names
+    placement: 'top',
     display: true,
     eyebrow: '2026',
     title: ['Salamanca'],
-    body: ['More than a city. A living archive.'],
+    body: ['Two thousand years in the same golden stone —', 'and still being written.'],
   },
 ]
 
@@ -133,7 +152,8 @@ export const chapters: { at: number; label: string }[] = [
   { at: 68.5, label: 'Roman' },
   { at: 75, label: 'Iron Age' },
   { at: 81.5, label: 'The stone' },
-  { at: 91.5, label: 'The Tormes' },
+  { at: 89.5, label: 'The Tormes' },
+  { at: 94, label: 'The Cathedrals' },
   { at: 100, label: '2026' },
 ]
 
@@ -158,8 +178,11 @@ export const yearKeys: [number, number][] = [
   [81, -40_000_000],
   [86.7, -40_000_000],
   [86.75, 100], // through the light, straight to Roman Salmantica
-  [95.4, 100],
-  [97.8, 2026],
+  [92.6, 100],
+  // through the arch the years run on to the cathedral's last stone
+  [94.6, 1733],
+  [97.9, 1733],
+  [98.9, 2026],
 ]
 
 export function formatYear(y: number): string {

@@ -140,6 +140,8 @@ body {
 .line > span {
   display: inline-block;
   will-change: transform;
+  /* a line too long for a phone breaks evenly, never leaving one word behind */
+  text-wrap: balance;
 }
 
 /* ── hud ── */
@@ -346,6 +348,14 @@ body {
   inset: -45% -30% -35% -40%;
   z-index: -1;
   background: radial-gradient(closest-side, rgb(12 9 6 / calc(var(--ink-mix) * 0.26)), transparent);
+  pointer-events: none;
+}
+.beat--top::before {
+  content: '';
+  position: absolute;
+  inset: -45% 8% -35%;
+  z-index: -1;
+  background: radial-gradient(closest-side, rgb(12 9 6 / calc(var(--ink-mix) * 0.22)), transparent);
   pointer-events: none;
 }
 .beat--center {

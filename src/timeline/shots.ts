@@ -84,9 +84,11 @@ export function buildShots(data: CityData): Shot[] {
     // … and the camera passes through
     { at: 93, pos: arch.clone().addScaledVector(downstream, 22).setY(WATER_Y + 5.5), tgt: arch.clone().addScaledVector(downstream, 120).setY(WATER_Y + 9) },
     // 18 — the postcard: bridge and cathedral at sunset, from downstream
-    { at: 96, pos: arch.clone().addScaledVector(downstream, 150).add(v(0, 9, 70)), tgt: v(55, 6, 640) },
-    // 19 — the archive: everything at once
-    { at: 100, pos: v(-460, 560, 1720), tgt: v(40, -5, 480) },
+    // (aimed above the towers, so the words have the sky to themselves)
+    { at: 96, pos: arch.clone().addScaledVector(downstream, 150).add(v(0, 9, 70)), tgt: v(55, 17, 640) },
+    // 19 — the archive: rising off the river until the old town stands
+    // against the evening sky, cathedral and Clerecía on the skyline
+    { at: 100, pos: v(-470, 150, 1420), tgt: v(50, 60, 520) },
   ]
 }
 

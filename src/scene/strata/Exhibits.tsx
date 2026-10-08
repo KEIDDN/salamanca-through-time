@@ -9,7 +9,7 @@ import { crack, makeVillamayorMaterial } from '../materials/villamayor'
 import { makeGraniteMaterial } from '../materials/granite'
 import { freeHalf } from '../materials/palette'
 import { world } from '../../timeline/world'
-import { LAYOUT, bevelBox, buildExhibits, exhibitsFor, heroStone, quarryBlocks, type Exhibit } from './exhibitGeometry'
+import { LAYOUT, LEVELS, bevelBox, buildExhibits, exhibitsFor, heroStone, quarryBlocks, type Exhibit } from './exhibitGeometry'
 import { seeded } from '../lib/cityData'
 
 /** The museum in the section: pieces at the depth of their era, under one travelling light. */
@@ -19,14 +19,15 @@ export function Exhibits({ data }: { data: CityData }) {
   const list = useMemo(() => exhibitsFor(terrain), [terrain])
   const mats = useMemo(
     () => ({
-      medieval: makeSectionMaterial({ half: freeHalf, kind: 'stone', base: '#b89e78', gold: '#b89e78', roof: '#a88f6a', ashlar: 0.6, baseY: -1e3 }),
+      // each piece settles into the shadow of its own floor
+      medieval: makeSectionMaterial({ half: freeHalf, kind: 'stone', base: '#b89e78', gold: '#b89e78', roof: '#a88f6a', ashlar: 0.6, baseY: terrain.heightAt(0, LAYOUT.gate.z) - LEVELS[0].depth }),
       roman: makeSectionMaterial({ half: freeHalf, kind: 'stone', base: '#6e655a', gold: '#6e655a', roof: '#6a6156', baseY: -1e3 }),
-      iron: makeSectionMaterial({ half: freeHalf, kind: 'stone', base: '#9c9284', gold: '#9c9284', roof: '#a39a8c', ashlar: 0.12, baseY: -1e3 }),
+      iron: makeSectionMaterial({ half: freeHalf, kind: 'stone', base: '#9c9284', gold: '#9c9284', roof: '#a39a8c', ashlar: 0.12, baseY: terrain.heightAt(0, LAYOUT.castro.z) - LAYOUT.castro.depth }),
       soil: makeSectionMaterial({ half: freeHalf, kind: 'soil', base: '#6b5643', gold: '#6b5643', roughness: 1 }),
       verraco: makeGraniteMaterial(),
       villamayor: makeVillamayorMaterial(),
     }),
-    [],
+    [terrain],
   )
   const spot = useRef<SpotLight>(null)
   const target = useMemo(() => new Object3D(), [])
@@ -64,7 +65,7 @@ export function Exhibits({ data }: { data: CityData }) {
       ))}
       <HeroStone data={data} material={mats.villamayor} />
       <primitive object={target} />
-      <spotLight ref={spot} target={target} angle={0.9} penumbra={1} distance={160} decay={1.6} intensity={0} castShadow={false} visible={false} />
+      <spotLight ref={spot} target={target} angle={0.62} penumbra={1} distance={160} decay={1.6} intensity={0} castShadow={false} visible={false} />
       {list.map((e, i) => (
         <Marker key={e.key} exhibit={e} index={i} />
       ))}

@@ -44,11 +44,14 @@ export function buildMasterTimeline(root: HTMLElement) {
   tl.to(world, { fov: 40, duration: 3, ease: 'sine.inOut' }, 80) // close on the stone
   tl.to(world, { fov: 56, duration: 4, ease: 'sine.inOut' }, 87) // low over the water
   tl.to(world, { fov: 30, duration: 4, ease: 'sine.inOut' }, 93)
+  tl.to(world, { fov: 25, duration: 3.5, ease: 'sine.inOut' }, 96.5) // long lens: the skyline monumental
 
   // ── opening veil (paper → world) ─────────────────────────────────────────
   tl.to(world, { veil: 0, duration: 6, ease: 'sine.inOut' }, 1.5)
   tl.to(world.fog, { near: 900, far: 4200, duration: 10, ease: 'sine.inOut' }, 2)
-  tl.to(world.fog, { near: 500, far: 3200, duration: 10 }, 14)
+  // golden-hour air: deep enough to give the aerials their scale and to
+  // dissolve the far bank where the model of the city ends
+  tl.to(world.fog, { near: 420, far: 2500, duration: 10 }, 14)
 
   // the type turns light only once the frame behind it has darkened into stone and shadow
   tl.to(world, { ink: 1, duration: 2.6, ease: 'sine.inOut' }, 20.4)

@@ -38,6 +38,7 @@ export function Lighting() {
     shared.uHorizon.value.setRGB(world.sky.horizon.r, world.sky.horizon.g, world.sky.horizon.b)
     shared.uSkyTop.value.setRGB(world.sky.top.r, world.sky.top.g, world.sky.top.b)
     shared.uDusk.value = world.dusk
+    shared.uSunset.value = Math.min(Math.max((world.sky.glow - 0.6) / 0.4, 0), 1)
 
     const el = (world.sun.elevation * Math.PI) / 180
     const az = (world.sun.azimuth * Math.PI) / 180
@@ -80,7 +81,10 @@ export function Lighting() {
     h.color.setRGB(world.hemi.sky.r, world.hemi.sky.g, world.hemi.sky.b)
     h.groundColor.setRGB(world.hemi.ground.r, world.hemi.ground.g, world.hemi.ground.b)
 
-    l.position.copy(camera.position)
+    // the lantern is carried, not mounted on the lens: a little above and to
+    // the left of the eye, so its light rakes and models instead of flattening
+    l.position.set(-1.6, 2.2, 0.6).applyMatrix4(camera.matrixWorld)
+    shared.uLampPos.value.copy(l.position)
     l.intensity = world.lamp * 105
     // above ground the lantern is not just dark but absent: every lit pixel skips it
     l.visible = world.lamp > 0.001

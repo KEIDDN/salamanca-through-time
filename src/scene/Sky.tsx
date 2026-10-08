@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { BackSide, Color, ShaderMaterial, Vector3, type Mesh } from 'three'
 import { world } from '../timeline/world'
+import { GLSL_HAZE, shared } from './materials/section'
 
 /** Gradient dome with a soft sun glow. Also feeds the fog its colour. */
 export function Sky() {
@@ -19,6 +20,7 @@ export function Sky() {
           uSunCol: { value: new Color() },
           uGlow: { value: 0 },
           uTint: { value: 0 },
+          uSunset: shared.uSunset,
         },
         vertexShader: /* glsl */ `
           varying vec3 vDir;
@@ -30,15 +32,20 @@ export function Sky() {
           }`,
         fragmentShader: /* glsl */ `
           uniform vec3 uTop, uHorizon, uSunCol, uSunDir;
-          uniform float uGlow, uTint;
+          uniform float uGlow, uTint, uSunset;
           varying vec3 vDir;
+          ${GLSL_HAZE}
           void main() {
             float h = clamp(vDir.y, -1.0, 1.0);
             // the horizon warm under the sun, cooler opposite it (matches the city's haze)
             vec3 d = normalize(vDir);
-            float toSun = pow(max(dot(d, normalize(uSunDir)), 0.0), 3.0);
-            vec3 hz = mix(uHorizon, uHorizon * mix(vec3(0.9, 0.95, 1.07), vec3(1.06, 1.0, 0.91), toSun), uTint);
-            vec3 c = mix(hz, uTop, smoothstep(-0.02, 0.55, h));
+            vec3 sd = normalize(uSunDir);
+            vec3 hz = hazeTint(uHorizon, d, sd, uTint, uSunset);
+            vec3 c = mix(hz, uTop, smoothstep(-0.02, mix(0.55, 0.4, uSunset), h)); // dusk climbs down the sky
+            // opposite the setting sun, the rose band of the anti-twilight
+            // arch sits just above the earth's shadow
+            float away = smoothstep(0.1, -0.9, dot(normalize(d.xz + 1e-5), normalize(sd.xz + 1e-5)));
+            c += vec3(0.42, 0.2, 0.22) * exp(-pow((h - 0.13) / 0.075, 2.0)) * away * uSunset * 0.55;
             c = mix(c, hz * 0.92, smoothstep(0.0, -0.4, h));
             float s = max(dot(normalize(vDir), normalize(uSunDir)), 0.0);
             c += uSunCol * uGlow * (pow(s, 7.0) * 0.35 + pow(s, 90.0) * 0.9);
