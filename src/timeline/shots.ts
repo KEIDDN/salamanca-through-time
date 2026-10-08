@@ -1,18 +1,35 @@
 import { CatmullRomCurve3, Vector3 } from 'three'
 import { plazaFrame, type CityData } from '../scene/lib/cityData'
+import { WATER_Y, terrainFor } from '../scene/lib/terrain'
+import { LAYOUT } from '../scene/strata/exhibitGeometry'
 
 /**
  * The camera is a single continuous shot: a Catmull-Rom path for the eye and
  * another for the point it looks at. Each key has a position on the master
  * timeline; the timeline tweens `world.cam` between keys.
  */
-export type Shot = { at: number; pos: Vector3; tgt: Vector3; ease?: string }
+export type Shot = { at: number; pos: Vector3; tgt: Vector3 }
 
 const v = (x: number, y: number, z: number) => new Vector3(x, y, z)
 
 export function buildShots(data: CityData): Shot[] {
   const P = plazaFrame(data)
   const C = P.center
+  const terrain = terrainFor(data)
+  /** a point `depth` metres below the street, on the section axis */
+  const under = (z: number, depth: number, x = 0) => v(x, terrain.heightAt(0, z) - depth, z)
+
+  // the arch of the Roman bridge the camera flies through (over mid-river)
+  const [ax, az] = data.bridge.a
+  const [bx, bz] = data.bridge.b
+  const len = Math.hypot(bx - ax, bz - az)
+  const d = v((bx - ax) / len, 0, (bz - az) / len)
+  const arch = v((ax + bx) / 2, WATER_Y + 5.2, (az + bz) / 2).addScaledVector(d, -len / 2 + (len / 26) * 12.5)
+  const downstream = v(-d.z, 0, d.x) // perpendicular to the bridge, towards the west
+  if (downstream.x > 0) downstream.negate()
+
+  const stone = under(LAYOUT.stone.z, LAYOUT.stone.depth)
+
   return [
     // 0 — almost abstract: the city seen from very high, through haze
     { at: 0, pos: v(-60, 2700, 380), tgt: v(0, 0, 520) },
@@ -29,29 +46,34 @@ export function buildShots(data: CityData): Shot[] {
     // 6 — a slow walk forward (hold)
     { at: 39, pos: P.at(1, 2.1, -14), tgt: P.at(0, 16, 42) },
     // 7 — lift off; the whole city along the section axis
-    { at: 45, pos: v(-470, 330, -330), tgt: v(0, -12, 430) },
-    // 8 — over the opening at the plaza end
-    { at: 52.5, pos: v(-26, 58, -150), tgt: v(8, -18, 90) },
-    // 9 — into the section
-    { at: 57, pos: v(0, -6.5, 45), tgt: v(0, -8, 200) },
+    { at: 44.5, pos: v(-470, 330, -330), tgt: v(0, -12, 430) },
+    // 8 — the section, face on: Plaza Mayor cut open like a drawing
+    { at: 52.5, pos: v(40, -14, -2), tgt: v(-46, -16, -2) },
+    // 9 — turning into the gallery
+    { at: 58.5, pos: under(70, 6.5, 8), tgt: under(220, 8) },
     // 10 — through the medieval gate
-    { at: 63, pos: v(0, -7.4, 222), tgt: v(0, -12, 380) },
+    { at: 63, pos: under(LAYOUT.gate.z + 10, 7.4), tgt: under(380, 12) },
     // 11 — along the Roman road
-    { at: 69, pos: v(0, -14.2, 420), tgt: v(0, -17, 580) },
+    { at: 68.5, pos: under(420, 11.8), tgt: under(580, 16.5) },
     // 12 — sinking towards the Iron Age
-    { at: 74, pos: v(0, -16.5, 610), tgt: v(0, -26, 760) },
-    // 13 — over the verraco
-    { at: 78.5, pos: v(-2, -21.5, 742), tgt: v(7, -27, 790) },
-    // 14 — the bedrock
-    { at: 83, pos: v(0, -41, 828), tgt: v(0, -38, 905) },
-    // 15 — rising through every layer at once
-    { at: 87, pos: v(0, -8, 895), tgt: v(-4, 16, 1060) },
-    // 16 — surfacing over the Tormes
-    { at: 90.5, pos: v(14, 34, 1010), tgt: v(30, 22, 760) },
-    // 17 — the postcard: the cathedral over the Roman bridge at sunset
-    { at: 95, pos: v(96, 5, 1004), tgt: v(40, 28, 610) },
-    // 18 — the archive: everything at once
-    { at: 100, pos: v(-330, 640, 1960), tgt: v(40, 0, 470) },
+    { at: 73, pos: under(615, 19), tgt: under(740, 27) },
+    // 13 — by the verraco
+    { at: 77.5, pos: under(736, 23.5, -4), tgt: under(LAYOUT.castro.z, 26.4, 8) },
+    // 14 — the stone itself: a slow turn around it
+    { at: 81.5, pos: stone.clone().add(v(-4.5, 3.4, -9)), tgt: stone.clone().add(v(0, 2.1, 0)) },
+    { at: 84, pos: stone.clone().add(v(3.5, 2.8, -8)), tgt: stone.clone().add(v(0, 2.2, 0)) },
+    // 15 — rising through every layer, towards the light
+    { at: 86.5, pos: stone.clone().add(v(14, 22, 30)), tgt: v(24, WATER_Y - 2, 1030) },
+    // 16 — surfacing in the Tormes, upstream of the bridge
+    { at: 89, pos: arch.clone().addScaledVector(downstream, -70).setY(WATER_Y + 4.5), tgt: arch.clone().setY(WATER_Y + 6) },
+    // 17 — the arch frames the sunset…
+    { at: 91.5, pos: arch.clone().addScaledVector(downstream, -9).setY(WATER_Y + 4.6), tgt: arch.clone().addScaledVector(downstream, 80).setY(WATER_Y + 6) },
+    // … and the camera passes through
+    { at: 93, pos: arch.clone().addScaledVector(downstream, 22).setY(WATER_Y + 5.5), tgt: arch.clone().addScaledVector(downstream, 120).setY(WATER_Y + 9) },
+    // 18 — the postcard: bridge and cathedral at sunset, from downstream
+    { at: 96, pos: arch.clone().addScaledVector(downstream, 150).add(v(0, 9, 70)), tgt: v(55, 6, 640) },
+    // 19 — the archive: everything at once
+    { at: 100, pos: v(-460, 560, 1720), tgt: v(40, -5, 480) },
   ]
 }
 
@@ -62,4 +84,4 @@ export function buildCurves(shots: Shot[]) {
 }
 
 /** Timeline positions of the keys — used by the master timeline without needing city data. */
-export const SHOT_TIMES = [0, 9, 17, 22.5, 27.5, 32, 39, 45, 52.5, 57, 63, 69, 74, 78.5, 83, 87, 90.5, 95, 100]
+export const SHOT_TIMES = [0, 9, 17, 22.5, 27.5, 32, 39, 44.5, 52.5, 58.5, 63, 68.5, 73, 77.5, 81.5, 84, 86.5, 89, 91.5, 93, 96, 100]

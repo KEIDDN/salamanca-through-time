@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import type { DirectionalLight, HemisphereLight, PointLight } from 'three'
+import { Vector3, type DirectionalLight, type HemisphereLight, type PointLight } from 'three'
 import { world } from '../timeline/world'
 import { camTarget } from './lib/camTarget'
 import { setOpening, shared } from './materials/section'
@@ -10,6 +10,9 @@ import { setOpening, shared } from './materials/section'
  * The sun's shadow frustum is refitted around whatever the camera looks at,
  * so shadows stay crisp from 2.7 km up down to street level.
  */
+const MAP = 2048
+const tmp = { d: new Vector3(), r: new Vector3(), u: new Vector3(), c: new Vector3(), up: new Vector3(0, 1, 0) }
+
 export function Lighting() {
   const sun = useRef<DirectionalLight>(null)
   const hemi = useRef<HemisphereLight>(null)
@@ -32,14 +35,29 @@ export function Lighting() {
     shared.uLamp.value = world.lamp
     shared.uTime.value = clock.elapsedTime
     shared.uHorizon.value.setRGB(world.sky.horizon.r, world.sky.horizon.g, world.sky.horizon.b)
+    shared.uDusk.value = world.dusk
 
     const el = (world.sun.elevation * Math.PI) / 180
     const az = (world.sun.azimuth * Math.PI) / 180
-    const dir = [Math.cos(el) * Math.cos(az), Math.sin(el), Math.cos(el) * Math.sin(az)]
+    const dir = tmp.d.set(Math.cos(el) * Math.cos(az), Math.sin(el), Math.cos(el) * Math.sin(az))
+    shared.uSunDir.value.copy(dir)
+    shared.uSunCol.value.setRGB(world.sun.color.r, world.sun.color.g, world.sun.color.b).multiplyScalar(world.sun.intensity / 3)
+    camera.updateMatrixWorld()
+    shared.uViewProj.value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+
+    // shadow frustum around what the camera looks at, snapped to whole texels
+    // in light space so shadow edges do not crawl while the camera moves
     const dist = camera.position.distanceTo(camTarget)
     const span = Math.min(Math.max(dist * 0.85, 70), 1500)
-    s.target.position.copy(camTarget).setY(0)
-    s.position.set(camTarget.x + dir[0] * 2500, dir[1] * 2500, camTarget.z + dir[2] * 2500)
+    const texel = (2 * span) / MAP
+    tmp.r.crossVectors(tmp.up, dir).normalize()
+    tmp.u.crossVectors(dir, tmp.r).normalize()
+    const c = tmp.c.copy(camTarget).setY(Math.max(camTarget.y, -60))
+    const a = Math.round(c.dot(tmp.r) / texel) * texel - c.dot(tmp.r)
+    const b = Math.round(c.dot(tmp.u) / texel) * texel - c.dot(tmp.u)
+    c.addScaledVector(tmp.r, a).addScaledVector(tmp.u, b)
+    s.target.position.copy(c)
+    s.position.copy(c).addScaledVector(dir, 2500)
     s.target.updateMatrixWorld()
     const sc = s.shadow.camera
     if (Math.abs(sc.right - span) > 1) {
@@ -55,7 +73,7 @@ export function Lighting() {
     h.groundColor.setRGB(world.hemi.ground.r, world.hemi.ground.g, world.hemi.ground.b)
 
     l.position.copy(camera.position)
-    l.intensity = world.lamp * 260
+    l.intensity = world.lamp * 150
   })
 
   return (
@@ -63,7 +81,7 @@ export function Lighting() {
       <directionalLight
         ref={sun}
         castShadow
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={[MAP, MAP]}
         shadow-bias={-0.0002}
         shadow-camera-near={10}
         shadow-camera-far={6000}

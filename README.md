@@ -19,9 +19,13 @@ The city is the interface. A white architectural model of Salamanca's real stree
 
 | Layer | Where |
 | --- | --- |
+| Terrain: the plateau of the old town falls ~22 m to the Tormes; the far bank is the flat Arrabal. Strata are measured from the local surface | `src/scene/lib/terrain.ts` |
 | Real geometry: 2,800 building footprints, courtyards included, plus the Tormes, Plaza Mayor, both cathedrals and the Roman bridge from OpenStreetMap, projected to metres and rotated so the section runs along +z | `scripts/build-city.mjs` → `public/data/salamanca.json` |
 | Hand-modelled landmarks: Plaza Mayor (88 arches, medallions, balconies, Ayuntamiento belfry, Pabellón Real), the two cathedrals with tower, domes and Torre del Gallo, and the 26-arch bridge with a verraco | `src/scene/landmarks/` |
-| The section: the city is rendered as two halves clipped against a moving plane. Back faces exposed by the clip are painted as a cap by intersecting the view ray with the plane: poché above ground, archaeological strata below | `src/scene/materials/section.ts` |
+| The section: the city is rendered as two halves clipped against a moving plane, closed with **stencil capping**. Back faces increment and front faces decrement the stencil, and one quad on the plane paints poché or strata wherever the plane lies inside matter. It stays exact even with overlapping OSM solids. Only geometry that crosses the plane is stencilled | `src/scene/materials/section.ts`, `src/scene/city/CityHalf.tsx` |
+| Façades: procedural windows, shopfronts and cornices from per-building data, lit at dusk; clay-tile and flat roofs; sandstone grain | `src/scene/materials/section.ts` |
+| Villamayor sandstone: object-space grain, Liesegang oxide bands and chisel bump, carved scallop shell | `src/scene/materials/villamayor.ts`, `src/scene/strata/exhibitGeometry.ts` |
+| Museum: wall lettering per layer (troika SDF text), section legend, hover markers | `src/scene/strata/` |
 | White model → golden city: every material is a (base, gold) pair on shared uniforms, so the timeline changes the whole city with a single value | `src/scene/materials/palette.ts` |
 | Exhibits in the section (wall and gate, Roman road, castro and verraco, rising sandstone blocks) under one travelling museum light | `src/scene/strata/` |
 | Camera: Catmull-Rom paths for eye and target | `src/timeline/shots.ts` |
@@ -36,7 +40,11 @@ npm install
 npm run dev
 ```
 
-In dev, `__seek(45)` in the console jumps to any point of the film (0–100).
+In dev, `__seek(45)` in the console jumps to any point of the film (0–100), and `?post=0`, `?shadow=0`, `?caps=0`, `?city=0`, `?ex=0` switch parts of the scene off for profiling.
+
+## Performance
+
+There is no post-processing stack. Occlusion is baked: a blurred footprint map for the ground and a base gradient on the walls. Anti-aliasing is native MSAA, tone mapping happens in the materials, and vignette and grain are CSS layers. The sun's shadow frustum follows the camera and is snapped to texels. The city renders once while it is whole, and the device pixel ratio adapts. On an Apple M1 in Chrome it holds 60 fps at retina resolution for nearly the whole film.
 
 ### Rebuilding the city data
 

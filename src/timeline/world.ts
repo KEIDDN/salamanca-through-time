@@ -37,12 +37,14 @@ export const world = {
   capAmbient: 1,
   lamp: 0,
   exhibits: [0, 0, 0, 0] as [number, number, number, number],
-  /** sandstone blocks drifting up out of the bedrock */
+  /** the hero stone turning as we leave it */
   rise: 0,
+  /** the section legend (architectural drawing moment) */
+  legend: 0,
+  /** windows lighting up after sunset */
+  dusk: 0,
 
-  /** post */
-  tilt: 0,
-  exposure: 1,
+  exposure: 1.05,
 
   /** HUD */
   year: 2026,

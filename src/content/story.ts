@@ -51,16 +51,16 @@ export const beats: Beat[] = [
   },
   {
     id: 'beneath',
-    in: 43.5,
-    out: 52,
+    in: 44,
+    out: 51.5,
     placement: 'right',
     title: ['Beneath every street,', 'another city.'],
     body: ['Salamanca is built on top of its own history.'],
   },
   {
     id: 'medieval',
-    in: 57.5,
-    out: 63.5,
+    in: 59,
+    out: 64.5,
     placement: 'low-left',
     eyebrow: 'XII — XV c.',
     title: ['Within the walls'],
@@ -68,15 +68,15 @@ export const beats: Beat[] = [
   },
   {
     id: 'university',
-    in: 63.5,
-    out: 67,
+    in: 64.5,
+    out: 67.8,
     placement: 'right',
     eyebrow: '1218',
     body: ['Alfonso IX of León founds a university here.', 'It has not stopped teaching since.'],
   },
   {
     id: 'roman',
-    in: 67.5,
+    in: 68.2,
     out: 73.5,
     placement: 'low-left',
     eyebrow: 'I c. AD',
@@ -86,7 +86,7 @@ export const beats: Beat[] = [
   {
     id: 'vettones',
     in: 74.5,
-    out: 80,
+    out: 79.5,
     placement: 'right',
     eyebrow: '220 BC',
     title: ['Helmantica'],
@@ -94,16 +94,16 @@ export const beats: Beat[] = [
   },
   {
     id: 'bedrock',
-    in: 81,
-    out: 86.5,
-    placement: 'center',
+    in: 80.5,
+    out: 85.5,
+    placement: 'low-left',
     eyebrow: 'Beneath it all',
     title: ['The stone itself.'],
     body: ['Forty million years of golden sand,', 'waiting to become a city.'],
   },
   {
     id: 'bridge',
-    in: 92,
+    in: 92.2,
     out: 97.2,
     placement: 'low-left',
     eyebrow: 'I c. AD',
@@ -122,6 +122,20 @@ export const beats: Beat[] = [
   },
 ]
 
+/** Stops on the progress line — hover to read, click to travel. */
+export const chapters: { at: number; label: string }[] = [
+  { at: 0, label: 'Salamanca' },
+  { at: 22, label: 'Plaza Mayor' },
+  { at: 31, label: 'The Golden City' },
+  { at: 45, label: 'The section' },
+  { at: 59.5, label: 'Medieval' },
+  { at: 68.5, label: 'Roman' },
+  { at: 75, label: 'Iron Age' },
+  { at: 81.5, label: 'The stone' },
+  { at: 91.5, label: 'The Tormes' },
+  { at: 100, label: '2026' },
+]
+
 /** Year readout keyframes (timeline position → year). Negative = BC. */
 export const yearKeys: [number, number][] = [
   [0, 2026],
@@ -129,15 +143,16 @@ export const yearKeys: [number, number][] = [
   [24, 1755],
   [40, 1755],
   [46, 2026],
-  [55, 2026],
-  [60, 1102],
+  [56, 2026],
+  [61, 1102],
   [65, 1218],
-  [68, 100],
+  [69, 100],
   [75, -220],
-  [80, -400],
-  [83, -40_000_000],
-  [86, -40_000_000],
-  [92, 100],
+  [79.5, -400],
+  [82, -40_000_000],
+  [85.5, -40_000_000],
+  [87.5, -500],
+  [91, 100],
   [96, 2026],
 ]
 

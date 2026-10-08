@@ -1,4 +1,5 @@
-import { beats, type Beat } from '../content/story'
+import { beats, chapters, type Beat } from '../content/story'
+import { travelTo } from '../timeline/scroller'
 
 /** Each line sits in a mask and rises into place — type that behaves like film titles. */
 function Lines({ lines, className }: { lines?: string[]; className: string }) {
@@ -27,6 +28,7 @@ function BeatView({ beat }: { beat: Beat }) {
 export function Overlay({ ready }: { ready: boolean }) {
   return (
     <div className="overlay">
+      <div className="film" aria-hidden />
       <div className="veil" data-veil />
 
       <header className="hud hud--top">
@@ -58,9 +60,14 @@ export function Overlay({ ready }: { ready: boolean }) {
         <span className="credit">Map data © OpenStreetMap contributors</span>
       </footer>
 
-      <div className="progress" aria-hidden>
+      <nav className="progress" aria-label="Chapters">
         <span className="progress__fill" />
-      </div>
+        {chapters.map((c) => (
+          <button key={c.label} className="progress__stop" style={{ top: `${c.at}%` }} onClick={() => travelTo(c.at)}>
+            <span className="progress__label">{c.label}</span>
+          </button>
+        ))}
+      </nav>
     </div>
   )
 }

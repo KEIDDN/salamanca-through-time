@@ -11,10 +11,16 @@ export type CityData = {
   bridge: { a: [number, number]; b: [number, number] }
   river: [number, number][]
   buildings: { p: number[]; h: number; k: number; holes?: number[][] }[]
+  landmarks: {
+    clerecia: [number, number][]
+    conchas: [number, number][]
+    escuelas: [number, number][]
+    patio: [number, number]
+  }
 }
 
 /** Slab depth: the archaeological block the city sits on. */
-export const SLAB_DEPTH = 60
+export const SLAB_DEPTH = 80
 
 /** Depths (metres below street) of each archaeological layer's floor. */
 export const LAYERS = {

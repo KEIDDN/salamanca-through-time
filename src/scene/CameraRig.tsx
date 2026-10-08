@@ -6,6 +6,15 @@ import { buildCurves, buildShots } from '../timeline/shots'
 import { world } from '../timeline/world'
 import { camTarget } from './lib/camTarget'
 
+/** Pointer, smoothed: the camera leans a few degrees towards it. */
+const look = { x: 0, y: 0, tx: 0, ty: 0 }
+if (typeof window !== 'undefined') {
+  window.addEventListener('pointermove', (e) => {
+    look.tx = (e.clientX / window.innerWidth) * 2 - 1
+    look.ty = (e.clientY / window.innerHeight) * 2 - 1
+  })
+}
+
 export function CameraRig({ data }: { data: CityData }) {
   const camera = useThree((s) => s.camera) as PerspectiveCamera
   const curves = useMemo(() => buildCurves(buildShots(data)), [data])
@@ -22,7 +31,11 @@ export function CameraRig({ data }: { data: CityData }) {
     pos.x += Math.sin(e * 0.31) * k
     pos.y += Math.sin(e * 0.23 + 1.3) * k * 0.6
     camera.position.copy(pos)
+    look.x += (look.tx - look.x) * 0.04
+    look.y += (look.ty - look.y) * 0.04
     camera.lookAt(camTarget)
+    camera.rotateY(-look.x * 0.035)
+    camera.rotateX(-look.y * 0.022)
     if (Math.abs(camera.fov - world.fov) > 1e-3) {
       camera.fov = world.fov
       camera.updateProjectionMatrix()

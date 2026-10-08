@@ -4,6 +4,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import Lenis from 'lenis'
 import { buildMasterTimeline } from './master'
 import { world } from './world'
+import { setScroller } from './scroller'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -11,7 +12,7 @@ gsap.registerPlugin(ScrollTrigger)
 export function useScrollTimeline(root: RefObject<HTMLElement | null>, track: RefObject<HTMLElement | null>, enabled: boolean) {
   useLayoutEffect(() => {
     if (!root.current || !track.current) return
-    const lenis = new Lenis({ lerp: 0.075, wheelMultiplier: 0.9, smoothWheel: true })
+    const lenis = new Lenis({ lerp: 0.09, wheelMultiplier: 0.85, smoothWheel: true })
     lenis.on('scroll', ScrollTrigger.update)
     const raf = (time: number) => lenis.raf(time * 1000)
     gsap.ticker.add(raf)
@@ -22,12 +23,14 @@ export function useScrollTimeline(root: RefObject<HTMLElement | null>, track: Re
       trigger: track.current,
       start: 'top top',
       end: 'bottom bottom',
-      scrub: 1.1,
+      // Lenis already smooths the wheel; a short scrub keeps the film responsive
+      scrub: 0.35,
       animation: tl,
       onUpdate: (self) => root.current?.style.setProperty('--progress', self.progress.toFixed(4)),
     })
 
     if (!enabled) lenis.stop()
+    setScroller(lenis)
     if (import.meta.env.DEV) {
       // dev-only: jump to a point of the film, e.g. __seek(45)
       Object.assign(window, {
@@ -41,6 +44,7 @@ export function useScrollTimeline(root: RefObject<HTMLElement | null>, track: Re
     }
 
     return () => {
+      setScroller(null)
       st.kill()
       tl.kill()
       gsap.ticker.remove(raf)

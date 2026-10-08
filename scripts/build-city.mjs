@@ -61,7 +61,8 @@ const plazaRect = orientedRect(plazaRing)
 console.log('plaza rect', plazaRect)
 
 // --- buildings ----------------------------------------------------------------
-const SKIP = new Set([CATHEDRAL_NEW_ID, CATHEDRAL_OLD_ID])
+const LANDMARK_IDS = { clerecia: 466919455, clereciaChurch: 6890723, conchas: 391276, escuelas: 1229115 }
+const SKIP = new Set([CATHEDRAL_NEW_ID, CATHEDRAL_OLD_ID, ...Object.values(LANDMARK_IDS)])
 const buildings = []
 let skipped = 0
 for (const e of elements) {
@@ -80,6 +81,7 @@ for (const e of elements) {
 // multipolygon buildings (courtyards!) — most of the historic centre is mapped this way
 let relKept = 0
 for (const r of relations) {
+  if (SKIP.has(r.id)) continue
   const outers = joinLines(r.members.filter((m) => m.role === 'outer' && m.geometry).map((m) => m.geometry.map(proj)))
   const inners = joinLines(r.members.filter((m) => m.role === 'inner' && m.geometry).map((m) => m.geometry.map(proj)))
     .map(simplifyRing)
@@ -106,7 +108,22 @@ const river = joinLines(riverWays.map((w) => w.geometry.map(proj)))
   .sort((a, b) => b.length - a.length)[0]
 console.log('river points', river.length)
 
+const outerRing = (id) => {
+  const e = byId.get(id) ?? relations.find((r) => r.id === id)
+  if (e.type === 'way') return simplifyRing(e.geometry.map(proj))
+  const rings = joinLines(e.members.filter((m) => m.role === 'outer' && m.geometry).map((m) => m.geometry.map(proj)))
+  return simplifyRing(rings.sort((a, b) => Math.abs(area(b)) - Math.abs(area(a)))[0])
+}
+const landmarks = {
+  clerecia: outerRing(LANDMARK_IDS.clerecia).map((p) => p.map(r1)),
+  conchas: outerRing(LANDMARK_IDS.conchas).map((p) => p.map(r1)),
+  escuelas: outerRing(LANDMARK_IDS.escuelas).map((p) => p.map(r1)),
+  /** Patio de Escuelas: the square the plateresque façade looks onto */
+  patio: centroid(byId.get(48871729).geometry.map(proj)).map(r1),
+}
+
 const out = {
+  landmarks,
   attribution: 'Data © OpenStreetMap contributors (ODbL)',
   origin: { lat: lat0, lon: lon0 },
   rotationDeg: (ang * 180) / Math.PI,
