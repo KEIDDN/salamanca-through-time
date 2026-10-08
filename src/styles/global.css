@@ -330,7 +330,7 @@ body {
   inset: -30% -25%;
   z-index: -1;
   background:
-    radial-gradient(closest-side, rgb(12 9 6 / calc(var(--ink-mix) * 0.34)), transparent),
+    radial-gradient(closest-side, rgb(12 9 6 / calc(var(--ink-mix) * 0.48)), transparent),
     radial-gradient(closest-side, rgb(239 235 227 / calc((1 - var(--ink-mix)) * 0.92)), rgb(239 235 227 / calc((1 - var(--ink-mix)) * 0.5)) 60%, transparent);
 }
 .beat--right::before {
@@ -339,6 +339,14 @@ body {
   inset: -40% -18% -40% -40%;
   z-index: -1;
   background: radial-gradient(closest-side, rgb(12 9 6 / calc(var(--ink-mix) * 0.3)), transparent);
+}
+.beat--low-left::before {
+  content: '';
+  position: absolute;
+  inset: -45% -30% -35% -40%;
+  z-index: -1;
+  background: radial-gradient(closest-side, rgb(12 9 6 / calc(var(--ink-mix) * 0.26)), transparent);
+  pointer-events: none;
 }
 .beat--center {
   left: 50%;

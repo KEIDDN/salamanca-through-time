@@ -107,6 +107,8 @@ export type SectionOptions = {
   doubleSided?: boolean
   /** cut-out patterns (ironwork) resolved by MSAA coverage instead of blending */
   alphaToCoverage?: boolean
+  /** upward faces are clay tile (monument roofs) */
+  tiles?: boolean
 }
 
 /* ── shared GLSL ───────────────────────────────────────────────────────── */
@@ -241,6 +243,19 @@ const FRONT_PARS = /* glsl */ `
     uniform sampler2D uReflTex;
   #endif
 
+  // Arab clay tile seen from a distance: channels running down the slope,
+  // courses across it, resolved to a flat tone where they would alias
+  float clayTile(vec3 p, vec3 wn) {
+    vec2 fall = wn.xz;
+    float sl = length(fall);
+    vec2 across = sl > 0.04 ? vec2(-fall.y, fall.x) / sl : vec2(1.0, 0.0);
+    float ch = dot(p.xz, across) / 0.32;
+    float co = dot(p.xz, sl > 0.04 ? fall / sl : vec2(0.0, 1.0)) / 0.42;
+    float chAA = fwidth(ch), coAA = fwidth(co);
+    float tile = (0.9 + 0.1 * (1.0 - abs(fract(ch) * 2.0 - 1.0))) * (1.0 - 0.06 * smoothstep(0.7, 0.98, fract(co + 0.5 * floor(ch))));
+    return mix(tile, 0.95, smoothstep(0.25, 0.8, max(chAA, coAA)));
+  }
+
   float ashlarMask(vec3 p, vec3 n) {
     vec2 uv = abs(n.x) > abs(n.z) ? p.zy : p.xy;
     if (abs(n.y) > 0.6) uv = p.xz;
@@ -270,6 +285,10 @@ const FRONT_COLOR = /* glsl */ `
     vec2 gp = p.xz * 0.9 + p.y * 0.7;
     float grain = sNoise(gp) * 0.67 + sNoise(gp * 2.03) * 0.33;
     col *= 1.0 + (grain - 0.5) * 0.12 * gold;
+    // the stone is never one colour: broad patches of paler, freshly dressed
+    // ashlar and of deeper ochre where the iron has come out
+    float patina = sNoise(p.xz * 0.045 + p.y * 0.03) * 0.6 + sNoise(vec2(p.x + p.z, p.y) * 0.35) * 0.4;
+    col *= mix(vec3(1.0), mix(vec3(1.05, 1.03, 1.0), vec3(0.93, 0.88, 0.8), patina), gold);
 
     #ifdef SECTION_BUILDING
       float ground = vInfo.x;
@@ -302,19 +321,17 @@ const FRONT_COLOR = /* glsl */ `
         // roofs: Arab clay tile — channels running down the slope, courses
         // across it — each roof fired a little differently and darkened by
         // weather towards the eaves; or flat modern roofs
-        vec2 fall = wn.xz;
-        float sl = length(fall);
-        vec2 across = sl > 0.04 ? vec2(-fall.y, fall.x) / sl : vec2(1.0, 0.0);
-        float ch = dot(p.xz, across) / 0.32;
-        float co = dot(p.xz, sl > 0.04 ? fall / sl : vec2(0.0, 1.0)) / 0.42;
-        float chAA = fwidth(ch), coAA = fwidth(co);
-        float tile = (0.9 + 0.1 * (1.0 - abs(fract(ch) * 2.0 - 1.0))) * (1.0 - 0.06 * smoothstep(0.7, 0.98, fract(co + 0.5 * floor(ch))));
-        tile = mix(tile, 0.95, smoothstep(0.25, 0.8, max(chAA, coAA)));
+        float tile = clayTile(p, wn);
         float roofId = sHash(vec2(roofY * 3.1, ground * 1.7));
-        vec3 clay = uRoof * mix(vec3(0.84, 0.86, 0.92), vec3(1.1, 1.0, 0.94), roofId);
-        clay *= 0.86 + 0.24 * sNoise(p.xz * 0.11 + roofY) ;
-        clay = mix(clay, clay * vec3(0.78, 0.8, 0.74), smoothstep(0.55, 0.85, sNoise(p.xz * 0.35 + 9.0)) * 0.5); // lichen, soot
-        clay *= tile * mix(0.8, 1.0, smoothstep(0.0, 0.9, p.y - roofY));
+        float age = sHash(vec2(ground * 2.3, roofY * 0.7));
+        // every roof fired and weathered differently: fresh orange clay, the
+        // common warm brown, and old tile gone grey-umber under lichen
+        vec3 clay = uRoof * mix(vec3(0.86, 0.88, 0.92), vec3(1.08, 0.98, 0.9), roofId);
+        clay = mix(clay, vec3(dot(clay, vec3(0.3, 0.5, 0.2))) * vec3(1.06, 0.97, 0.88), smoothstep(0.45, 1.0, age) * 0.55);
+        clay *= 0.88 + 0.2 * sNoise(p.xz * 0.11 + roofY);
+        clay = mix(clay, clay * vec3(0.8, 0.8, 0.74), smoothstep(0.55, 0.85, sNoise(p.xz * 0.35 + 9.0)) * 0.45); // lichen, soot
+        // the eave darkens with rain; the ridge catches the light
+        clay *= tile * mix(0.74, 1.0, smoothstep(0.0, 1.2, p.y - roofY));
         vec3 flatRoof = vec3(0.44, 0.41, 0.37) * (0.9 + 0.2 * sNoise(p.xz * 0.3));
         vec3 roof = mix(clay, flatRoof, vInfo.z);
         col = mix(uBase * 1.03, roof, gold);
@@ -323,7 +340,13 @@ const FRONT_COLOR = /* glsl */ `
 
     #if defined(SECTION_STONE) || defined(SECTION_FOLIAGE)
       float up = smoothstep(0.55, 0.8, wn.y);
-      col = mix(col, mix(uBase * 1.03, uRoof, gold), up);
+      vec3 top = uRoof;
+      #ifdef SECTION_TILES
+        // the monuments' tiled roofs: same clay as the city, weathered in broad patches
+        top *= clayTile(p, wn) * (0.88 + 0.2 * sNoise(p.xz * 0.09)) * (0.9 + 0.1 * smoothstep(-0.2, 0.6, wn.y - 0.9 + sNoise(p.xz * 0.5) * 0.2));
+        top = mix(top, top * vec3(0.84, 0.82, 0.78), smoothstep(0.5, 0.85, sNoise(p.xz * 0.21 + 4.0)) * 0.5);
+      #endif
+      col = mix(col, mix(uBase * 1.03, top, gold), up);
       if (uAshlar > 0.0) col *= 1.0 - uAshlar * ashlarMask(p, wn) * (0.4 + 0.6 * gold);
       col *= mix(0.62, 1.0, smoothstep(0.0, 5.0, p.y - uBaseY));
     #endif
@@ -403,7 +426,7 @@ const FRONT_COLOR = /* glsl */ `
         joint *= 1.0 - smoothstep(0.08, 0.3, jaa);
         float slab = sHash(floor(sv) + 17.0);
         vec3 field = col * (0.95 + 0.08 * slab);
-        vec3 dark = col * mix(0.93, 0.74, gold) * vec3(0.97, 0.98, 1.02);
+        vec3 dark = col * mix(0.94, 0.8, gold) * vec3(0.97, 0.98, 1.02);
         col = mix(field, dark, granite);
         col *= 1.0 - joint * mix(0.05, 0.14, gold);
         // worn smooth where people walk, darker by the arcades
@@ -437,7 +460,7 @@ export function makeSectionMaterial(o: SectionOptions) {
   }
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, shared, local, { uOffset: o.half.uOffset })
-    shader.defines = { ...(shader.defines ?? {}), [`SECTION_${kind.toUpperCase()}`]: '' }
+    shader.defines = { ...(shader.defines ?? {}), [`SECTION_${kind.toUpperCase()}`]: '', ...(o.tiles ? { SECTION_TILES: '' } : {}) }
 
     shader.vertexShader = shader.vertexShader
       .replace(
@@ -533,7 +556,7 @@ export function makeSectionMaterial(o: SectionOptions) {
         #include <opaque_fragment>`,
       )
   }
-  mat.customProgramCacheKey = () => `section-${kind}`
+  mat.customProgramCacheKey = () => `section-${kind}${o.tiles ? '-tiles' : ''}`
   return mat
 }
 

@@ -70,7 +70,8 @@ export const beats: Beat[] = [
     id: 'university',
     in: 64.5,
     out: 67.8,
-    placement: 'right',
+    // above the vanishing point: the gallery walls carry their own labels
+    placement: 'top',
     eyebrow: '1218',
     body: ['Alfonso IX of León founds a university here.', 'It has not stopped teaching since.'],
   },
@@ -144,16 +145,21 @@ export const yearKeys: [number, number][] = [
   [40, 1755],
   [46, 2026],
   [56, 2026],
-  [61, 1102],
-  [65, 1218],
-  [69, 100],
-  [75, -220],
-  [79.5, -400],
-  [82, -40_000_000],
+  // each date holds while its caption is read, then the years run on
+  [60.2, 1102],
+  [63.6, 1102],
+  [65.2, 1218],
+  [67.6, 1218],
+  [69.4, 100],
+  [73.4, 100],
+  [75.6, -220],
+  [78.8, -220],
+  [79.8, -400],
+  [81, -40_000_000],
   [86.7, -40_000_000],
   [86.75, 100], // through the light, straight to Roman Salmantica
-  [91, 100],
-  [96, 2026],
+  [95.4, 100],
+  [97.8, 2026],
 ]
 
 export function formatYear(y: number): string {

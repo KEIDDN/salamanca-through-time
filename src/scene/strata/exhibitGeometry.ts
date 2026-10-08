@@ -1,7 +1,6 @@
-import { BoxGeometry, BufferAttribute, BufferGeometry, CylinderGeometry, IcosahedronGeometry, Shape, Vector2, Vector3 } from 'three'
+import { BufferAttribute, BufferGeometry, CylinderGeometry, IcosahedronGeometry, Shape, Vector2, Vector3 } from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { noise3 } from '../lib/sdf'
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { SLAB_DEPTH, seeded } from '../lib/cityData'
 import { fracture, type Plane as FracturePlane } from '../lib/fracture'
 import type { Terrain } from '../lib/terrain'
@@ -186,18 +185,24 @@ export function buildExhibits(terrain: Terrain) {
   {
     const { z0, z1, depth } = LAYOUT.road
     // each flag a worn block: a square frustum with soft (smooth-shaded) arrises
-    const flag = new CylinderGeometry(0.62, 0.71, 1, 4, 1)
+    const flag = new CylinderGeometry(0.675, 0.71, 1, 4, 1)
     flag.rotateY(Math.PI / 4)
-    for (let z = z0; z < z1; z += 0.95) {
+    // courses of uneven depth, flags of uneven size, each settled a little
+    // differently by two thousand years of carts: a road, not a keyboard
+    for (let z = z0; z < z1; ) {
+      const dz = 0.78 + rand() * 0.42
       const y = s(z) - depth
       let x = -3
       while (x < 3) {
-        const w = 0.55 + rand() * 0.55
+        const w = 0.5 + rand() * 0.7
         const ww = Math.min(w, 3 - x)
         const h = 0.3 + rand() * 0.08
-        P.add('roman', flag, T(x + ww / 2, y - h / 2 + (rand() - 0.5) * 0.04, z + 0.02 + rand() * 0.06, (rand() - 0.5) * 0.1, [ww - 0.03, h, 0.9 + rand() * 0.05]))
+        const d = dz - 0.04 - rand() * 0.06
+        const sink = (rand() - 0.5) * 0.07 - (Math.abs(x + ww / 2) < 1.4 ? 0.025 : 0) // ruts along the middle
+        P.add('roman', flag, T(x + ww / 2, y - h / 2 + sink, z + d / 2 + (rand() - 0.5) * 0.08, (rand() - 0.5) * 0.16, [ww - 0.025, h, d], (rand() - 0.5) * 0.035, (rand() - 0.5) * 0.035))
         x += ww
       }
+      z += dz
     }
     for (let z = z0; z < z1; z += 10) {
       const y = s(z + 5) - depth
@@ -278,18 +283,20 @@ export function heroStone() {
 
 function shellGeometry() {
   const D = HERO.D
-  // scallop shell on the front face (+z): a ribbed, domed fan
-  const R = 1.0, ribs = 15, segR = 14, segA = 90
+  // scallop shell on the front face (+z), as carved on the Casa de las
+  // Conchas: a domed fan of broad, rounded ribs whose ends scallop the rim
+  const R = 1.0, ribs = 13, segR = 14, segA = 104
   const grid: Vector3[][] = []
   for (let i = 0; i <= segR; i++) {
     const row: Vector3[] = []
-    const r = (i / segR) * R
+    const t = i / segR
     for (let j = 0; j <= segA; j++) {
-      const a = Math.PI * 0.08 + (j / segA) * Math.PI * 0.84
-      const rib = Math.pow(Math.abs(Math.cos((j / segA) * ribs * Math.PI)), 0.6)
-      const dome = Math.sqrt(Math.max(0, 1 - (r / R) ** 2))
-      const h = 0.22 * dome + 0.06 * rib * (r / R) * (1 - (r / R) * 0.3)
-      row.push(new Vector3(Math.cos(a) * r, Math.sin(a) * r - 0.55, D / 2 + h))
+      const a = Math.PI * 0.17 + (j / segA) * Math.PI * 0.66
+      const rib = 0.5 - 0.5 * Math.cos((j / segA) * ribs * Math.PI * 2)
+      const r = t * R * (1 + 0.05 * rib * t * t) // the ribs run out past the rim
+      const dome = Math.sqrt(Math.max(0, 1 - t * t * 0.92))
+      const h = 0.2 * dome * (0.35 + 0.65 * Math.min(1, t * 4)) + 0.075 * rib * Math.min(1, t * 2.5) * (1 - t * 0.35)
+      row.push(new Vector3(Math.cos(a) * r, Math.sin(a) * r - 0.58, D / 2 + h))
     }
     grid.push(row)
   }
@@ -308,13 +315,9 @@ function shellGeometry() {
     shell.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3))
     shell.computeVertexNormals()
   }
-  const ear = new BoxGeometry(0.62, 0.26, 0.16)
-  ear.translate(0, -0.62, D / 2 + 0.06)
-  ear.deleteAttribute('uv')
-  const g = mergeGeometries([shell, ear.toNonIndexed()], false)
-  g.setAttribute('aCut', new BufferAttribute(new Float32Array(g.getAttribute('position').count), 1))
-  g.computeBoundingSphere()
-  return g
+  shell.setAttribute('aCut', new BufferAttribute(new Float32Array(shell.getAttribute('position').count), 1))
+  shell.computeBoundingSphere()
+  return shell
 }
 
 /** A stack of squared blocks around the hero piece: the quarry. */

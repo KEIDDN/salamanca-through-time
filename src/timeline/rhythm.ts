@@ -26,7 +26,12 @@ const WIDTH = 1.25 // film units the slowdown spreads over
 /** Moments that play in slow motion without being rests: the scroll never settles on them. */
 const SLOW = [{ at: 85.4, hold: 1.8, width: 1.4 }] // the stone breaking open
 
-const bumps = [...rests.map((at) => ({ at, hold: HOLD, width: WIDTH })), ...SLOW]
+/** The hero frames hold longer: arriving in the square, the golden city, the bridge at sunset. */
+const HERO = new Set(['plaza', 'golden', 'bridge'])
+const heroRests = beats.filter((b) => HERO.has(b.id)).map((b) => b.in + (b.out - b.in) * 0.48)
+const holdAt = (at: number) => (heroRests.some((h) => Math.abs(h - at) < 1e-6) ? HOLD * 1.35 : HOLD)
+
+const bumps = [...rests.map((at) => ({ at, hold: holdAt(at), width: WIDTH })), ...SLOW]
 
 const N = 2000
 const scrollAt = new Float64Array(N + 1) // film i/N*100 → scroll 0..1

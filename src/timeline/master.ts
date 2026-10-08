@@ -50,7 +50,8 @@ export function buildMasterTimeline(root: HTMLElement) {
   tl.to(world.fog, { near: 900, far: 4200, duration: 10, ease: 'sine.inOut' }, 2)
   tl.to(world.fog, { near: 500, far: 3200, duration: 10 }, 14)
 
-  tl.to(world, { ink: 1, duration: 3, ease: 'sine.inOut' }, 19)
+  // the type turns light only once the frame behind it has darkened into stone and shadow
+  tl.to(world, { ink: 1, duration: 2.6, ease: 'sine.inOut' }, 20.4)
 
   // ── white model → golden city ────────────────────────────────────────────
   tl.to(world, { gold: 1, duration: 12, ease: 'sine.inOut' }, 17)
@@ -59,9 +60,11 @@ export function buildMasterTimeline(root: HTMLElement) {
   const sun = world.sun
   tl.to(sun, { elevation: 15, azimuth: 128, intensity: 4.6, duration: 14, ease: 'sine.inOut' }, 16)
   tl.to(sun.color, { ...rgb('#ffc584'), duration: 14, ease: 'sine.inOut' }, 16)
-  tl.to(world.hemi, { intensity: 0.6, duration: 14 }, 16)
-  tl.to(world.hemi.sky, { ...rgb('#cfd8de'), duration: 14 }, 16)
-  tl.to(world.hemi.ground, { ...rgb('#a88a64'), duration: 14 }, 16)
+  // golden hour as a photographer sees it: warm key, cool open-sky fill, so
+  // the streets in shadow stay blue and legible instead of going to mud
+  tl.to(world.hemi, { intensity: 0.86, duration: 14 }, 16)
+  tl.to(world.hemi.sky, { ...rgb('#a9bbd4'), duration: 14 }, 16)
+  tl.to(world.hemi.ground, { ...rgb('#9a7650'), duration: 14 }, 16)
   tl.to(world.sky.top, { ...rgb('#7f9cb6'), duration: 14, ease: 'sine.inOut' }, 14)
   tl.to(world.sky.horizon, { ...rgb('#f6d3a4'), duration: 14, ease: 'sine.inOut' }, 14)
   tl.to(world.sky, { glow: 0.6, duration: 14 }, 14)
@@ -106,13 +109,16 @@ export function buildMasterTimeline(root: HTMLElement) {
   tl.set(sun, { elevation: 6, azimuth: 150 }, up)
   tl.to(sun, { intensity: 4.4, duration: now }, up)
   tl.to(sun.color, { ...rgb('#ffa05a'), duration: now }, up)
-  tl.to(world.hemi, { intensity: 0.6, duration: now }, up)
+  tl.to(world.hemi, { intensity: 0.72, duration: now }, up)
   tl.to(world.hemi.sky, { ...rgb('#8088ab'), duration: now }, up)
   tl.to(world.hemi.ground, { ...rgb('#8a5a3a'), duration: now }, up)
   tl.to(world.sky.top, { ...rgb('#2a3352'), duration: now }, up)
   tl.to(world.sky.horizon, { ...rgb('#f3a862'), duration: now }, up)
   tl.to(world.sky, { glow: 1, duration: now }, up)
-  tl.to(world.fog, { near: 700, far: 4200, duration: now }, up)
+  // evening air: enough haze to set the cathedral back from the river and to
+  // dissolve the far edge of the city into the sky in the closing shot
+  tl.to(world.fog, { near: 550, far: 3200, duration: now }, up)
+  tl.to(world.fog, { near: 600, far: 3000, duration: 4, ease: 'sine.inOut' }, 96)
   tl.to(world, { capAmbient: 0.75, lamp: 0, open: 0, duration: now }, up)
   tl.to(world, { reflect: 1, duration: now }, up)
   tl.to(world, { reflect: 0, duration: 2.5, ease: 'sine.in' }, 96.8) // rising away from the water

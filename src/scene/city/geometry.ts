@@ -84,7 +84,7 @@ export function buildCityGeometry(data: CityData, terrain: Terrain) {
 
     const n = (pos.length - start) / 3
     const v = 0.88 + rand() * 0.14
-    const warm = b.k === 1 ? 1.04 : 1 + (rand() - 0.5) * 0.05
+    const warm = b.k === 1 ? 1.04 : 1 + (rand() - 0.5) * 0.08
     for (let i = 0; i < n; i++) {
       col.push(v * warm, v, v / warm)
       info.push(ground, eave, flat)

@@ -15,9 +15,9 @@ export const crack = { value: 0 }
 export function makeVillamayorMaterial({ broken = false } = {}) {
   const mat = new MeshStandardMaterial({ color: '#ffffff', roughness: 0.94, metalness: 0 })
   const uniforms = {
-    uSand: { value: new Color('#c4904f') },
+    uSand: { value: new Color('#c39a5f') },
     uOxide: { value: new Color('#8f4a26') },
-    uPale: { value: new Color('#d9bb88') },
+    uPale: { value: new Color('#dcc497') },
     uCrack: crack,
   }
   mat.onBeforeCompile = (shader) => {
@@ -76,7 +76,7 @@ export function makeVillamayorMaterial({ broken = false } = {}) {
           float bands = sin((p.x * 0.5 + p.y * 1.1 + p.z * 0.3 + warp) * 3.6);
           float broken = smoothstep(0.3, 0.7, vNoise(p * 1.6 + 7.0));
           float oxide = smoothstep(0.9, 0.995, bands) * broken * (0.5 + 0.5 * vNoise(p * 5.0));
-          float pale = smoothstep(0.55, 0.85, vNoise(p * 2.2 + 3.0)) * 0.5;
+          float pale = smoothstep(0.42, 0.78, vFbm(p * 1.7 + 3.0)) * 0.26; // soft, not blotched
           vec3 c = uSand * (0.86 + 0.28 * vFbm(p * 12.0));
           c = mix(c, uPale, pale);
           c = mix(c, uOxide, oxide * 0.55);
