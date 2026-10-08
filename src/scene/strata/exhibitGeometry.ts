@@ -171,12 +171,18 @@ export function buildExhibits(terrain: Terrain) {
       for (const zc of [95, 135, 170, 260, 300]) for (const sx of [-1, 1]) {
         const x0 = sx * (14 + rand() * 18)
         const w = 8 + rand() * 7, d = 9 + rand() * 6
-        const a = -10.8, b = -9.6 - rand() * 0.8
+        const a = -10.8, b = -9.4 - rand() * 0.9
         P.box('medieval', x0 - w / 2, a, zc - d / 2, x0 + w / 2, b, zc - d / 2 + 0.7)
         P.box('medieval', x0 - w / 2, a, zc + d / 2 - 0.7, x0 + w / 2, b, zc + d / 2)
         P.box('medieval', x0 - w / 2, a, zc - d / 2, x0 - w / 2 + 0.7, b, zc + d / 2)
         P.box('medieval', x0 + w / 2 - 0.7, a, zc - d / 2, x0 + w / 2, b, zc + d / 2)
       }
+      // a well inside the walls: a ring of dressed stone and its trough
+      const well = new CylinderGeometry(1.25, 1.35, 1.05, 20, 1, true)
+      P.add('medieval', well, T(-7, -10.8 + 0.52, 150))
+      P.add('medieval', new CylinderGeometry(1.42, 1.42, 0.16, 20), T(-7, -10.8 + 1.1, 150))
+      P.box('medieval', -4.6, -10.8, 148.4, -2.4, -10.25, 149.3)
+      well.dispose()
     })
     wg.dispose()
   }
@@ -218,6 +224,43 @@ export function buildExhibits(terrain: Terrain) {
       P.add('roman', band, T(sx * 4.6, y + 2.2, z))
       P.box('roman', sx * 4.6 - 0.6, y - 0.3, z - 0.6, sx * 4.6 + 0.6, y, z + 0.6)
     }
+    // a portico along the road, in ruins: granite bases, shafts broken at
+    // every height, a drum or two lying where it fell
+    const shaft = new CylinderGeometry(0.42, 0.46, 1, 16)
+    const drum = new CylinderGeometry(0.44, 0.44, 1.1, 16)
+    for (let z = z0 + 12; z < z1 - 6; z += 19) {
+      for (const sx of [-1, 1]) {
+        const x = sx * (10.5 + (rand() - 0.5) * 0.6)
+        const zz = z + (rand() - 0.5) * 1.2
+        const y = s(zz) - depth
+        P.box('iron', x - 0.75, y - 0.1, zz - 0.75, x + 0.75, y + 0.45, zz + 0.75)
+        const r = rand()
+        const h = r < 0.18 ? 0 : r > 0.86 ? 5.2 : 0.8 + rand() * 3.2
+        if (h > 0) P.add('iron', shaft, T(x, y + 0.45 + h / 2, zz, rand() * 6, [1, h, 1], (rand() - 0.5) * 0.03, (rand() - 0.5) * 0.03))
+        if (h > 5) P.box('iron', x - 0.62, y + 0.45 + h, zz - 0.62, x + 0.62, y + 0.85 + h, zz + 0.62) // a capital still in place
+        if (rand() < 0.45) {
+          const dz = (rand() - 0.5) * 4, dx = -sx * (1.6 + rand() * 1.5)
+          P.add('iron', drum, T(x + dx, y + 0.42, zz + dz, rand() * Math.PI, 1, 0, Math.PI / 2))
+        }
+      }
+    }
+    // the Romans buried their dead along the roads out of town: stelae,
+    // round-headed, some leaning, facing the travellers
+    const stela = new Parts<'s'>()
+    stela.box('s', -0.45, 0, -0.12, 0.45, 1.5, 0.12)
+    stela.add('s', new CylinderGeometry(0.45, 0.45, 0.24, 16, 1, false, 0, Math.PI), T(0, 1.5, 0, 0, 1, Math.PI / 2, 0))
+    const stelaGeo = stela.build().s!
+    for (let z = z0 + 26; z < z1 - 10; z += 31) {
+      for (const sx of [-1, 1]) {
+        if (rand() < 0.25) continue
+        const zz = z + rand() * 6
+        const y = s(zz) - depth
+        P.add('roman', stelaGeo, T(sx * (7.4 + rand() * 1.2), y - 0.15, zz, sx > 0 ? -Math.PI / 2 : Math.PI / 2, 1 + rand() * 0.25, (rand() - 0.5) * 0.16, (rand() - 0.5) * 0.12))
+      }
+    }
+    stelaGeo.dispose()
+    shaft.dispose()
+    drum.dispose()
     flag.dispose()
     mile.dispose()
     band.dispose()
@@ -226,19 +269,62 @@ export function buildExhibits(terrain: Terrain) {
   // ── iron age: hut circles of a Vetton castro and its verraco ─────────────
   {
     const rocks = rockVariants(6)
-    const huts = [[-16, 690, 3.6], [18, 712, 4.2], [-24, 742, 3.2], [24, 790, 3.8], [-15, 800, 4.4], [16, 822, 3.0]] as const
+    const huts: [number, number, number][] = [[-16, 690, 3.6], [18, 712, 4.2], [-24, 742, 3.2], [24, 790, 3.8], [-15, 800, 4.4], [16, 822, 3.0]]
+    // a castro was crowded: more huts packed between them, clear of the way
+    // down the middle and of the verraco's plinth
+    for (let tries = 0; huts.length < 17 && tries < 400; tries++) {
+      const r = 2.6 + rand() * 1.8
+      const hx = (rand() < 0.5 ? -1 : 1) * (8 + r + rand() * (GALLERY_HALF - 14 - r))
+      const hz = 682 + rand() * 146
+      const clear = huts.every(([x, z, rr]) => Math.hypot(x - hx, z - hz) > r + rr + 2.2) && Math.hypot(hx - 9, hz - LAYOUT.castro.z) > r + 8
+      if (clear) huts.push([hx, hz, r])
+    }
     for (const [hx, hz, r] of huts) {
       const y = s(hz) - LAYOUT.castro.depth
       const n = Math.round(r * 9)
-      for (let k = 0; k < n; k++) {
-        const a = (k / n) * Math.PI * 2
-        if (k / n > 0.04 && k / n < 0.12) continue // doorway
-        // dry-stone footings: rough fieldstones, bedded slightly into the floor
-        const sz = 0.42 + rand() * 0.3
-        const rock = rocks[Math.floor(rand() * rocks.length)]
-        P.add('iron', rock, T(hx + Math.cos(a) * r, y + sz * 0.32, hz + Math.sin(a) * r, -a + (rand() - 0.5) * 0.5, [0.5 + rand() * 0.22, sz * 0.55, 0.33 + rand() * 0.1], (rand() - 0.5) * 0.3, (rand() - 0.5) * 0.3))
+      // dry-stone walls: rough fieldstones in courses, each course offset
+      // half a stone, robbed down to two or three courses over the centuries
+      const courses = 2 + Math.floor(rand() * 2)
+      let yc = y
+      for (let c = 0; c < courses; c++) {
+        let hMax = 0
+        for (let k = 0; k < n; k++) {
+          const t = (k + (c % 2) * 0.5) / n
+          if (t > 0.04 && t < 0.12) continue // doorway
+          if (c === courses - 1 && rand() < 0.3) continue // robbed out
+          const a = t * Math.PI * 2
+          const sz = 0.42 + rand() * 0.3
+          hMax = Math.max(hMax, sz * 0.55)
+          const rock = rocks[Math.floor(rand() * rocks.length)]
+          P.add('iron', rock, T(hx + Math.cos(a) * r, yc + sz * 0.32, hz + Math.sin(a) * r, -a + (rand() - 0.5) * 0.5, [0.5 + rand() * 0.22, sz * 0.55, 0.36 + rand() * 0.1], (rand() - 0.5) * 0.3, (rand() - 0.5) * 0.3))
+        }
+        yc += hMax * 0.8
       }
-      P.add('iron', new CylinderGeometry(r - 0.4, r - 0.4, 0.12, 24), T(hx, y + 0.06, hz))
+      // a hearth at the centre, and a quern stone by the door
+      for (let k = 0; k < 7; k++) {
+        const a = (k / 7) * Math.PI * 2
+        P.add('iron', rocks[k % rocks.length], T(hx + Math.cos(a) * 0.7, y + 0.1, hz + Math.sin(a) * 0.7, a, [0.22, 0.14, 0.18]))
+      }
+      P.add('iron', new CylinderGeometry(0.42, 0.46, 0.22, 14), T(hx + r * 0.62, y + 0.11, hz + r * 0.35))
+      P.add('soil', new CylinderGeometry(r - 0.4, r - 0.3, 0.1, 24), T(hx, y + 0.05, hz)) // the trodden floor inside
+    }
+    // the castro's rampart: a dry-stone wall across the hill, older and rougher
+    // than the medieval one, with its gate on the same road
+    {
+      const zr = 668
+      for (let c = 0; c < 4; c++) {
+        let x = -GALLERY_HALF + 1
+        while (x < GALLERY_HALF - 1) {
+          const w = 0.8 + rand() * 0.7
+          if (Math.abs(x) > 4.2) {
+            const zz = zr + (rand() - 0.5) * 0.5 + c * 0.25
+            const ycourse = s(zz) - LEVELS[2].depth + c * 0.62
+            if (!(c >= 2 && rand() < 0.35 + c * 0.12)) // the top robbed out in stretches
+              P.add('iron', rocks[Math.floor(rand() * rocks.length)], T(x + w / 2, ycourse + 0.3, zz, rand() * 6, [w * 0.62, 0.38 + rand() * 0.1, 0.9 + rand() * 0.4]))
+          }
+          x += w
+        }
+      }
     }
     rocks.forEach((g) => g.dispose())
     const cz = LAYOUT.castro.z
@@ -320,19 +406,41 @@ function shellGeometry() {
   return shell
 }
 
-/** A stack of squared blocks around the hero piece: the quarry. */
+/**
+ * The quarry around the hero piece: along both walls the bed is cut back in
+ * benches, block by block, as Villamayor is still worked — each step a course
+ * of blocks not yet lifted out — and the blocks that were lifted wait in neat
+ * stacks for the carts.
+ */
 export function quarryBlocks(terrain: Terrain) {
   const rand = seeded(1729)
-  const z = LAYOUT.stone.z
-  const y0 = terrain.heightAt(0, z) - LAYOUT.stone.depth
-  return Array.from({ length: 22 }, (_, i) => {
-    const side = i % 2 ? 1 : -1
-    return {
-      x: side * (8 + rand() * 18),
-      y: y0 + 0.8 + Math.floor(rand() * 3) * 1.65,
-      z: z - 14 + rand() * 30,
-      s: [3 + rand() * 1.5, 1.6, 1.5 + rand() * 0.6] as [number, number, number],
-      ry: (rand() - 0.5) * 0.4,
+  const z0 = LEVELS[3].z0 + 3, z1 = LEVELS[3].z1 - 2
+  const out: { x: number; y: number; z: number; s: [number, number, number]; ry: number }[] = []
+  const H = 1.6
+  for (const side of [-1, 1]) {
+    // three benches stepping up towards the cut face
+    for (let step = 0; step < 3; step++) {
+      const layers = 3 - step
+      const xIn = GALLERY_HALF - 1 - (step + 1) * 3.3
+      for (let layer = 0; layer < layers; layer++)
+        for (let col = 0; col < 2; col++) {
+          const x = side * (xIn + 0.85 + col * 1.65)
+          for (let z = z0 + (layer % 2) * 1.6; z < z1 - 1.6; z += 3.25) {
+            const y0 = terrain.heightAt(0, z) - LAYOUT.stone.depth
+            out.push({ x, y: y0 + H / 2 + layer * H, z: z + 1.6, s: [1.6, H - 0.03, 3.2], ry: (rand() - 0.5) * 0.012 })
+          }
+        }
     }
-  })
+  }
+  // stacks of lifted blocks, squared and waiting
+  const stacks = [[-15, -8], [-20, 12], [16, -12], [21, 8], [12, 18]] as const
+  for (const [sx, sz] of stacks) {
+    const z = LAYOUT.stone.z + sz
+    const y0 = terrain.heightAt(0, z) - LAYOUT.stone.depth
+    const rows = 1 + Math.floor(rand() * 3)
+    for (let r = 0; r < rows; r++)
+      for (let k = 0; k < 3 - Math.min(r, 1); k++)
+        out.push({ x: sx + (k - 1) * 1.62 + r * 0.4, y: y0 + H / 2 + r * H, z: z + (rand() - 0.5) * 0.2, s: [1.55, H - 0.03, 3 + rand() * 0.4], ry: (rand() - 0.5) * 0.05 })
+  }
+  return out
 }

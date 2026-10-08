@@ -1,4 +1,5 @@
 import { Color, MeshStandardMaterial } from 'three'
+import { GLSL_BULBS, shared } from './section'
 
 /**
  * Villamayor sandstone, up close: warm arkosic grain, the wavy iron-oxide
@@ -19,20 +20,33 @@ export function makeVillamayorMaterial({ broken = false } = {}) {
     uOxide: { value: new Color('#8f4a26') },
     uPale: { value: new Color('#dcc497') },
     uCrack: crack,
+    uBulbs: shared.uBulbs,
+    uLevelZ: shared.uLevelZ,
+    uLevelD: shared.uLevelD,
+    uHeightTex: shared.uHeightTex,
+    uHeightRect: shared.uHeightRect,
   }
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms)
     if (broken) shader.defines = { ...(shader.defines ?? {}), BROKEN: '' }
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vObj;\n#ifdef BROKEN\nattribute float aCut;\nvarying float vCut;\n#endif')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObj = position;\n#ifdef BROKEN\nvCut = aCut;\n#endif')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vObj;\nvarying vec3 vWorld;\n#ifdef BROKEN\nattribute float aCut;\nvarying float vCut;\n#endif')
+      // quarry blocks are instances of one box: each takes its pattern from
+      // where it lies in the bed, so no two blocks are the same stone
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObj = position;\n#ifdef USE_INSTANCING\nvObj = (instanceMatrix * vec4(position, 1.0)).xyz;\n#endif\n#ifdef BROKEN\nvCut = aCut;\n#endif')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWorld = (modelMatrix * vec4(vObj, 1.0)).xyz;\n#ifndef USE_INSTANCING\nvWorld = (modelMatrix * vec4(position, 1.0)).xyz;\n#endif')
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
         /* glsl */ `#include <common>
         uniform vec3 uSand, uOxide, uPale;
         uniform float uCrack;
+        uniform sampler2D uHeightTex;
+        uniform vec4 uHeightRect;
+        float surfaceAt(vec2 xz) { return texture2D(uHeightTex, (xz - uHeightRect.xy) * uHeightRect.zw).r; }
+        ${GLSL_BULBS}
         varying vec3 vObj;
+        varying vec3 vWorld;
         #ifdef BROKEN
           varying float vCut;
         #endif
@@ -96,6 +110,7 @@ export function makeVillamayorMaterial({ broken = false } = {}) {
       .replace(
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
+        if (uBulbs > 0.0) totalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.74, 0.46) * bulbLight(vWorld) * 0.8;
         #ifdef BROKEN
           // the stone itself glowing (tinted by its own colour), not a white light
           totalEmissiveRadiance += diffuseColor.rgb * vec3(1.5, 0.95, 0.5) * uCrack * vCut * (0.6 + 0.4 * vNoise(vObj * 6.0));

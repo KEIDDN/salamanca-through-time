@@ -70,9 +70,15 @@ export const shared = {
   uLamp: { value: 0 },
   /** where the lantern is: held up and to the left of the eye, so it models what it lights */
   uLampPos: { value: new Vector3() },
+  /** the work lights strung along the gallery: how far down it they have come on (0 → 1) */
+  uBulbs: { value: 0 },
+  /** gallery floor levels: z where each level ends, and its depth below the street */
+  uLevelZ: { value: new Vector4(296, 650, 836, 1e9) },
+  uLevelD: { value: new Vector4(10.8, 18.9, 28.6, 38) },
   uDusk: { value: 0 },
   /** 0 → 1 as the sun touches the horizon: the air opposite it falls into the earth's shadow */
   uSunset: { value: 0 },
+  uAlpen: { value: 0 },
   uTime: { value: 0 },
   uSunDir: { value: new Vector3(0, 1, 0) },
   uSunCol: { value: new Color(1, 1, 1) },
@@ -116,6 +122,39 @@ export type SectionOptions = {
 }
 
 /* ── shared GLSL ───────────────────────────────────────────────────────── */
+
+/** The work lights of the excavation, as geometry and as light. Shared with the bulbs themselves. */
+export const BULBS = { z0: 72, step: 9, count: 95, x: 44.9, lift: 3.4, zEnd: 930 }
+
+/**
+ * Light from the work lights strung along both walls of the gallery: warm
+ * pools on the walls and the floor beneath each bulb, computed from the
+ * nearest bulb alone (no light objects, a few ALU per pixel). Needs
+ * surfaceAt(). Bulbs come on one after another down the gallery.
+ */
+export const GLSL_BULBS = /* glsl */ `
+  uniform float uBulbs;
+  uniform vec4 uLevelZ;
+  uniform vec4 uLevelD;
+  float galleryFloor(float z) {
+    float d = z < uLevelZ.x ? uLevelD.x : z < uLevelZ.y ? uLevelD.y : z < uLevelZ.z ? uLevelD.z : uLevelD.w;
+    return surfaceAt(vec2(0.0, z)) - d;
+  }
+  float bulbOn(float z) {
+    float t = (z - ${BULBS.z0.toFixed(1)}) / ${(BULBS.zEnd - BULBS.z0).toFixed(1)};
+    return smoothstep(t - 0.02, t + 0.005, uBulbs * 1.06);
+  }
+  float bulbLight(vec3 p) {
+    float i = clamp(floor((p.z - ${BULBS.z0.toFixed(1)}) / ${BULBS.step.toFixed(1)} + 0.5), 0.0, ${(BULBS.count - 1).toFixed(1)});
+    float zb = ${BULBS.z0.toFixed(1)} + i * ${BULBS.step.toFixed(1)};
+    vec3 b = vec3(sign(p.x) * ${BULBS.x.toFixed(2)}, galleryFloor(zb) + ${BULBS.lift.toFixed(2)}, zb);
+    vec3 dv = p - b;
+    dv.y *= dv.y > 0.0 ? 2.2 : 0.75; // a bare bulb under its cable: the light falls downwards
+    float d = length(dv);
+    float inside = step(66.0, p.z) * step(p.z, ${BULBS.zEnd.toFixed(1)});
+    return (exp(-d * d * 0.11) * 0.72 + exp(-d * 0.5) * 0.12) * bulbOn(zb) * inside;
+  }
+`
 
 /**
  * The colour of the air looking along `d`: warm towards the sun, cool away
@@ -279,6 +318,7 @@ const FRONT_PARS = /* glsl */ `
   float sWinLit = 0.0;
   uniform vec3 uSunDir;
   uniform float uSunset;
+  uniform float uAlpen;
   ${GLSL_HAZE}
   #ifdef SECTION_WATER
     uniform float uTime;
@@ -461,6 +501,24 @@ const FRONT_COLOR = /* glsl */ `
         float clod = sFbm(p.xz * 0.35) * 0.6 + sNoise(p.xz * 3.1) * 0.25 + sNoise(p.xz * 11.0) * 0.15;
         col = uBase * (0.72 + 0.5 * clod);
         col = mix(col, strataColor(p + vec3(0.0, -0.5, 0.0), 1.0) * 0.7, 0.2);
+        // at the bottom the floor is the bedrock itself, the quarry floor: golden
+        // sandstone scored in a grid where each block was cut and lifted out
+        float rockFloor = smoothstep(33.0, 35.0, surfaceAt(p.xz) - p.y);
+        if (rockFloor > 0.0) {
+          vec2 g = p.xz / vec2(1.65, 3.25);
+          vec2 cell = floor(g);
+          vec2 e = abs(fract(g) - 0.5) * 2.0;
+          vec2 gaa = fwidth(g) * 1.5;
+          // not every joint was cut: blocks still in the bed run on unbroken
+          vec2 near = floor(g + 0.5);
+          float cx = step(0.45, sHash(vec2(near.x, cell.y) + 9.1)), cy = step(0.45, sHash(vec2(cell.x, near.y) + 3.7));
+          float cut = max(smoothstep(0.965 - gaa.x, 0.985, e.x) * cx, smoothstep(0.98 - gaa.y, 0.993, e.y) * cy) * (1.0 - smoothstep(0.1, 0.4, max(gaa.x, gaa.y)));
+          vec3 rock = sLin(vec3(0.6, 0.45, 0.29)) * (0.93 + 0.1 * sHash(cell)) * (0.86 + 0.24 * sFbm(p.xz * 0.6));
+          rock *= 1.0 - cut * 0.28;
+          // sand and spoil left lying over it, thickest away from the worked faces
+          rock = mix(rock, col * 0.9, smoothstep(0.45, 0.8, sNoise(p.xz * 0.12 + 4.0)) * 0.6);
+          col = mix(col, rock, rockFloor);
+        }
       }
     #endif
 
@@ -515,6 +573,13 @@ const FRONT_COLOR = /* glsl */ `
         col *= mix(0.86, 1.0, smoothstep(0.0, 5.0, edge));
       }
     #endif
+
+    // the last of the sun: below the rooftops the city has already gone blue
+    // with dusk, while the towers and domes still hold the gold
+    if (uAlpen > 0.0) {
+      float crown = smoothstep(20.0, 46.0, p.y);
+      col *= mix(mix(vec3(1.0), vec3(0.6, 0.64, 0.8), uAlpen), vec3(1.0 + 0.14 * uAlpen, 1.0 + 0.04 * uAlpen, 1.0 - 0.04 * uAlpen), crown);
+    }
 
     diffuseColor.rgb = col;
   }
@@ -573,7 +638,7 @@ export function makeSectionMaterial(o: SectionOptions) {
       )
 
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\n${GLSL_COMMON}\n${FRONT_PARS}`)
+      .replace('#include <common>', `#include <common>\n${GLSL_COMMON}\n${GLSL_BULBS}\n${FRONT_PARS}`)
       .replace('#include <color_fragment>', `#include <color_fragment>\n${FRONT_COLOR}`)
       .replace(
         '#include <normal_fragment_maps>',
@@ -599,6 +664,7 @@ export function makeSectionMaterial(o: SectionOptions) {
           // the same lantern falloff as the cut faces, so floor and walls read as one
           // excavation — kept low, so the real (raking) light shapes the ground
           totalEmissiveRadiance += diffuseColor.rgb * uLamp * (exp(-length(vWorldPos - uLampPos) * 0.013) * 0.4 + 0.035);
+          if (uBulbs > 0.0) totalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.74, 0.46) * bulbLight(vWorldPos) * 0.9;
         #endif`,
       )
       .replace(
@@ -717,6 +783,7 @@ export function makeCapMaterial(half: Half) {
     fragmentShader: /* glsl */ `
       #include <common>
       ${GLSL_COMMON}
+      ${GLSL_BULBS}
       uniform vec4 uPlane;
       uniform float uCapAmbient;
       uniform float uLamp;
@@ -753,6 +820,7 @@ export function makeCapMaterial(half: Half) {
           if (!poche) lamp *= relief * (0.86 + 0.28 * H);
         }
         vec3 light = vec3(uCapAmbient * 0.55) + uSunCol * sun * 0.45 * uCapAmbient + vec3(1.0, 0.9, 0.78) * lamp;
+        if (uBulbs > 0.0 && !poche) light += vec3(1.0, 0.74, 0.46) * bulbLight(vWorldPos) * 1.1;
         vec3 c = cap * light;
         c = mix(c, uHorizon, smoothstep(uFog.x, uFog.y, dist));
         gl_FragColor = vec4(c, 1.0);

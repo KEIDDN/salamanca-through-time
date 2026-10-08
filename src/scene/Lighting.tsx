@@ -34,6 +34,8 @@ export function Lighting() {
     shared.uStrata.value = world.strata
     shared.uCapAmbient.value = world.capAmbient
     shared.uLamp.value = world.lamp
+    shared.uBulbs.value = world.bulbs
+    shared.uAlpen.value = world.alpen
     shared.uTime.value = clock.elapsedTime
     shared.uHorizon.value.setRGB(world.sky.horizon.r, world.sky.horizon.g, world.sky.horizon.b)
     shared.uSkyTop.value.setRGB(world.sky.top.r, world.sky.top.g, world.sky.top.b)

@@ -61,7 +61,9 @@ export function Exhibits({ data }: { data: CityData }) {
   return (
     <group>
       {(Object.keys(geo) as (keyof typeof geo)[]).map((k) => (
-        <mesh key={k} geometry={geo[k]} material={mats[k]} castShadow={k !== 'soil'} receiveShadow />
+        // no sun reaches the gallery: casting into the sun's shadow map would
+        // only cost every frame above ground
+        <mesh key={k} geometry={geo[k]} material={mats[k]} receiveShadow />
       ))}
       <HeroStone data={data} material={mats.villamayor} />
       <primitive object={target} />
@@ -198,7 +200,7 @@ function HeroStone({ data, material }: { data: CityData; material: Material }) {
       <mesh ref={glow} position={[0, floor + 2.25, LAYOUT.stone.z]} material={glowMat} renderOrder={30} visible={false} frustumCulled={false}>
         <planeGeometry args={[1, 1]} />
       </mesh>
-      <instancedMesh ref={quarry} args={[geo.box, material, blocks.length]} castShadow receiveShadow frustumCulled={false} />
+      <instancedMesh ref={quarry} args={[geo.box, material, blocks.length]} receiveShadow frustumCulled={false} />
     </group>
   )
 }

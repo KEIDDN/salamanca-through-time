@@ -27,11 +27,11 @@ export function buildMasterTimeline(root: HTMLElement) {
     const a = SHOT_TIMES[i], b = SHOT_TIMES[i + 1]
     // glide everywhere; ease into the first move and the holds (the square
     // seen whole — arriving 3, leaving 4 —, street level, the section drawing
-    // — arriving 8, held 9, leaving 10 — and the stone)
+    // — arriving 8, held 9, leaving 10 —, the stone, and the cathedrals)
     const ease =
       i === 0 ? 'sine.in'
-      : i === 6 || i === 9 || i === 18 ? 'sine.inOut'
-      : i === 3 || i === 8 || i === n - 1 ? 'sine.out'
+      : i === 6 || i === 9 || i === 18 || i === n - 1 ? 'sine.inOut'
+      : i === 3 || i === 8 || i === n - 2 ? 'sine.out'
       : i === 4 || i === 10 || i === 19 ? 'sine.in'
       : 'none'
     tl.fromTo(world, { cam: i / n }, { cam: (i + 1) / n, duration: b - a, ease, immediateRender: i === 0 }, a)
@@ -44,7 +44,8 @@ export function buildMasterTimeline(root: HTMLElement) {
   tl.to(world, { fov: 40, duration: 3, ease: 'sine.inOut' }, 80) // close on the stone
   tl.to(world, { fov: 56, duration: 4, ease: 'sine.inOut' }, 87) // low over the water
   tl.to(world, { fov: 30, duration: 4, ease: 'sine.inOut' }, 93)
-  tl.to(world, { fov: 25, duration: 3.5, ease: 'sine.inOut' }, 96.5) // long lens: the skyline monumental
+  tl.to(world, { fov: 18, duration: 2.6, ease: 'sine.inOut' }, 95) // a long lens across the river: the cathedrals loom over the city
+  tl.to(world, { fov: 25, duration: 2, ease: 'sine.inOut' }, 98) // long lens: the skyline monumental
 
   // ── opening veil (paper → world) ─────────────────────────────────────────
   tl.to(world, { veil: 0, duration: 6, ease: 'sine.inOut' }, 1.5)
@@ -91,6 +92,8 @@ export function buildMasterTimeline(root: HTMLElement) {
   tl.to(world.sky, { glow: 0, duration: 3 }, dark)
   tl.to(world.fog, { near: 50, far: 380, duration: 3 }, dark)
   tl.to(world, { capAmbient: 0.09, lamp: 1, duration: 3 }, dark)
+  // and the excavation's work lights come on, one after another, down the gallery
+  tl.to(world, { bulbs: 1, duration: 3.2, ease: 'power1.in' }, dark + 1.4)
   // exhibits light up as we reach them
   const ex = world.exhibits
   tl.to(ex, { 0: 1, duration: 2.5 }, 58.5).to(ex, { 0: 0.12, duration: 3 }, 65)
@@ -103,6 +106,7 @@ export function buildMasterTimeline(root: HTMLElement) {
   tl.to(world, { shatter: 1, duration: 2.7 }, 84.3)
   // the lantern dims: from here the light is the stone's own
   tl.to(world, { lamp: 0.03, duration: 0.6, ease: 'sine.inOut' }, 84.3)
+  tl.to(world, { bulbs: 0, duration: 0.8, ease: 'sine.in' }, 84.3)
   tl.to(world, { flash: 1, duration: 0.85, ease: 'power2.in' }, 85.9)
   tl.to(world, { flash: 0, duration: 1.5, ease: 'sine.out' }, 87.0)
 
@@ -124,9 +128,13 @@ export function buildMasterTimeline(root: HTMLElement) {
   tl.to(world.fog, { near: 600, far: 3000, duration: 4, ease: 'sine.inOut' }, 96)
   tl.to(world, { capAmbient: 0.75, lamp: 0, open: 0, duration: now }, up)
   tl.to(world, { reflect: 1, duration: now }, up)
-  tl.to(world, { reflect: 0, duration: 2.5, ease: 'sine.in' }, 96.8) // rising away from the water
+  tl.to(world, { reflect: 0, duration: 2, ease: 'sine.in' }, 95.6) // rising away from the water
   tl.to(ex, { 3: 0, duration: now }, up)
   tl.to(world, { dusk: 1, duration: 7, ease: 'sine.in' }, 93)
+  // the sun leaves the streets first: the low city cools into dusk while the
+  // last light lingers on the crown of the cathedral and the towers
+  tl.to(world, { alpen: 1, duration: 3, ease: 'sine.inOut' }, 94.6)
+  tl.to(world, { cathLabels: 1, duration: 1.2 }, 96.8).to(world, { cathLabels: 0, duration: 0.8 }, 98.7)
   tl.to(sun, { elevation: 3, intensity: 3.6, duration: 6 }, 94)
 
   // ── year readout ─────────────────────────────────────────────────────────

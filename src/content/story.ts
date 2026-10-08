@@ -118,20 +118,20 @@ export const beats: Beat[] = [
   {
     // the postcard: the cathedral over the river, the moment the whole film was layering towards
     id: 'cathedral',
-    in: 93.9,
-    out: 98.1,
+    in: 95.6,
+    out: 99.3,
     placement: 'top',
     eyebrow: 'XII c. · 1513 — 1733',
     title: ['Two Cathedrals'],
     body: [
       'When Salamanca outgrew its Romanesque cathedral, it did not tear it down.',
-      'It raised the new one against its walls — two hundred years of Gothic —',
-      'and kept both. Even its faith was built in layers.',
+      'It built the new one against its walls, and kept both.',
+      'Even its faith was built in layers.',
     ],
   },
   {
     id: 'archive',
-    in: 98.4,
+    in: 99.5,
     out: 101,
     // in the sky, above the skyline it names
     placement: 'top',
@@ -153,7 +153,7 @@ export const chapters: { at: number; label: string }[] = [
   { at: 75, label: 'Iron Age' },
   { at: 81.5, label: 'The stone' },
   { at: 89.5, label: 'The Tormes' },
-  { at: 94, label: 'The Cathedrals' },
+  { at: 97.4, label: 'The Cathedrals' },
   { at: 100, label: '2026' },
 ]
 
@@ -180,9 +180,9 @@ export const yearKeys: [number, number][] = [
   [86.75, 100], // through the light, straight to Roman Salmantica
   [92.6, 100],
   // through the arch the years run on to the cathedral's last stone
-  [94.6, 1733],
-  [97.9, 1733],
-  [98.9, 2026],
+  [95.4, 1733],
+  [99.1, 1733],
+  [99.9, 2026],
 ]
 
 export function formatYear(y: number): string {

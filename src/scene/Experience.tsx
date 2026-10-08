@@ -11,12 +11,14 @@ import { buildPlazaMayor } from './landmarks/plazaMayor'
 import { buildCathedrals } from './landmarks/cathedral'
 import { buildBridge } from './landmarks/bridge'
 import { buildOldTown } from './landmarks/oldTown'
+import { CathedralLabels } from './landmarks/CathedralLabels'
 import { halves, shared } from './materials/section'
 import { CameraRig } from './CameraRig'
 import { Lighting } from './Lighting'
 import { Sky } from './Sky'
 import { WaterReflection, makeReflectionTarget } from './WaterReflection'
 import { Exhibits } from './strata/Exhibits'
+import { Excavation } from './strata/Excavation'
 import { CutLine } from './strata/CutLine'
 import { StrataLabels } from './strata/StrataLabels'
 import { world } from '../timeline/world'
@@ -87,9 +89,11 @@ export function Experience({ data }: { data: CityData }) {
       {!flag('city') && <CityHalf data={data} geo={geo} half={halves.L} />}
       <CityHalf data={data} geo={geo} half={halves.R} />
       {!flag('ex') && <Exhibits data={data} />}
+      {!flag('ex') && <Excavation data={data} />}
       <StrataLabels data={data} />
       <Abyss data={data} />
       <CutLine data={data} />
+      <CathedralLabels data={data} />
     </Canvas>
   )
 }

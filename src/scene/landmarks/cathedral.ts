@@ -68,6 +68,22 @@ function domeRib(prof: Vector2[], radius: number, lift: number) {
   return new TubeGeometry(new CatmullRomCurve3(pts), 20, radius, 5, false)
 }
 
+/** Where the two towers stand: the New Cathedral's bell tower and the Old Cathedral's Torre del Gallo. */
+export function cathedralTowers(data: CityData) {
+  const { west, south } = compass(data)
+  const r = orientedRect(data.cathedral.nuevo)
+  const u = new Vector3(Math.cos(r.angle), 0, Math.sin(r.angle))
+  if (u.dot(west) < 0) u.negate()
+  const vside = new Vector3(-u.z, 0, u.x)
+  if (vside.dot(south) < 0) vside.negate()
+  const bell = new Vector3(r.cx, 0, r.cz).addScaledVector(u, r.len / 2 - 7).addScaledVector(vside, r.wid / 2 - 7)
+  const ro = orientedRect(data.cathedral.viejo)
+  const uo = new Vector3(Math.cos(ro.angle), 0, Math.sin(ro.angle))
+  if (uo.dot(west) < 0) uo.negate()
+  const gallo = new Vector3(ro.cx, 0, ro.cz).addScaledVector(uo, -ro.len * 0.2)
+  return { bell, gallo }
+}
+
 export function buildCathedrals(data: CityData) {
   const P = new Parts<CathedralKey>()
   const { west, south } = compass(data)

@@ -523,6 +523,47 @@ body {
   color: #1b1713;
 }
 
+/* ── the cathedrals, named where they stand ── */
+
+.cathlabel {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateX(-50%);
+  color: #f6efe3;
+  white-space: nowrap;
+  text-shadow: 0 0 14px rgb(20 14 10 / 0.55);
+}
+.cathlabel__rule {
+  width: 1px;
+  height: calc(var(--draw, 0) * var(--rise, 40px));
+  background: linear-gradient(to top, rgb(246 239 227 / 0), rgb(246 239 227 / 0.85));
+}
+.cathlabel__text {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+  opacity: clamp(0, calc(var(--draw, 0) * 2 - 1), 1);
+  transform: translateY(calc((1 - var(--draw, 0)) * 6px));
+}
+.cathlabel__name {
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 300;
+  line-height: 1;
+}
+.cathlabel__era {
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
 /* ── section legend (architectural drawing) ── */
 
 .legend {

@@ -83,9 +83,14 @@ export function buildShots(data: CityData): Shot[] {
     { at: 91.5, pos: arch.clone().addScaledVector(downstream, -9).setY(WATER_Y + 4.6), tgt: arch.clone().addScaledVector(downstream, 80).setY(WATER_Y + 6) },
     // … and the camera passes through
     { at: 93, pos: arch.clone().addScaledVector(downstream, 22).setY(WATER_Y + 5.5), tgt: arch.clone().addScaledVector(downstream, 120).setY(WATER_Y + 9) },
-    // 18 — the postcard: bridge and cathedral at sunset, from downstream
-    // (aimed above the towers, so the words have the sky to themselves)
-    { at: 96, pos: arch.clone().addScaledVector(downstream, 150).add(v(0, 9, 70)), tgt: v(55, 17, 640) },
+    // 18 — the postcard, in passing: bridge and cathedral at sunset, from downstream…
+    { at: 95.3, pos: arch.clone().addScaledVector(downstream, 150).add(v(0, 9, 70)), tgt: v(55, 17, 640) },
+    // … then rising off the river onto the far bank, to look back across it
+    // at the cathedrals on a long lens: the crown of the tower against the
+    // dusk, the city at its feet already in shadow, the words in the sky.
+    // (Every coordinate keeps moving the same way from the arch to the last
+    // shot, so the curve never doubles back through the bridge.)
+    { at: 97.6, pos: v(-230, 42, 1150), tgt: v(92, 80, 515) },
     // 19 — the archive: rising off the river until the old town stands
     // against the evening sky, cathedral and Clerecía on the skyline
     { at: 100, pos: v(-470, 150, 1420), tgt: v(50, 60, 520) },
@@ -130,4 +135,4 @@ export function buildCurves(shots: Shot[]) {
 }
 
 /** Timeline positions of the keys — used by the master timeline without needing city data. */
-export const SHOT_TIMES = [0, 9, 17, 22.5, 24.4, 27.5, 32, 39, 44.5, 52.5, 55.4, 58.5, 63, 68.5, 70.8, 73, 77.5, 79.6, 81.5, 84, 86.6, 86.95, 89, 91.5, 93, 96, 100]
+export const SHOT_TIMES = [0, 9, 17, 22.5, 24.4, 27.5, 32, 39, 44.5, 52.5, 55.4, 58.5, 63, 68.5, 70.8, 73, 77.5, 79.6, 81.5, 84, 86.6, 86.95, 89, 91.5, 93, 95.3, 97.6, 100]

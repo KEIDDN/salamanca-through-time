@@ -39,6 +39,8 @@ export const world = {
   /** light inside the section */
   capAmbient: 1,
   lamp: 0,
+  /** the excavation's work lights, coming on down the gallery (0 → 1) */
+  bulbs: 0,
   exhibits: [0, 0, 0, 0] as [number, number, number, number],
   /** the hero stone turning as we leave it */
   rise: 0,
@@ -52,6 +54,10 @@ export const world = {
   reflect: 0,
   /** windows lighting up after sunset */
   dusk: 0,
+  /** the last sun only on the heights: the low city in dusk, the towers still gold */
+  alpen: 0,
+  /** the labels naming the two cathedrals */
+  cathLabels: 0,
 
   exposure: 1.05,
 
