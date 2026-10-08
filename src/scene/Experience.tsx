@@ -15,6 +15,7 @@ import { halves, shared } from './materials/section'
 import { CameraRig } from './CameraRig'
 import { Lighting } from './Lighting'
 import { Sky } from './Sky'
+import { WaterReflection, makeReflectionTarget } from './WaterReflection'
 import { Exhibits } from './strata/Exhibits'
 import { CutLine } from './strata/CutLine'
 import { StrataLabels } from './strata/StrataLabels'
@@ -57,6 +58,9 @@ export function Experience({ data }: { data: CityData }) {
     shared.uHeightRect.value.set(...terrain.heightRect)
     shared.uAoTex.value = bakeContactShadow(data)
     shared.uAoRect.value.set(x0, z0, 1 / (x1 - x0), 1 / (z1 - z0))
+    const P = plazaFrame(data)
+    shared.uPlaza.value.set(P.center.x, P.center.z, P.e.x, P.e.z)
+    shared.uPlazaHalf.value.set(P.halfE, P.halfN, 0, 0)
   }, [data])
 
   return (
@@ -79,6 +83,7 @@ export function Experience({ data }: { data: CityData }) {
       <CameraRig data={data} />
       <Lighting />
       <Sky />
+      <WaterReflection />
       {!flag('city') && <CityHalf data={data} geo={geo} half={halves.L} />}
       <CityHalf data={data} geo={geo} half={halves.R} />
       {!flag('ex') && <Exhibits data={data} />}
@@ -160,6 +165,15 @@ function Precompile() {
       if (!alive) return
       set(false)
       await gl.compileAsync(scene, camera)
+      if (!alive) return
+      // the river's reflection renders into a linear target: its own variants
+      const rt = makeReflectionTarget()
+      const prev = gl.getRenderTarget()
+      gl.setRenderTarget(rt)
+      const done = gl.compileAsync(scene, camera)
+      gl.setRenderTarget(prev)
+      await done
+      rt.dispose()
     })()
     if (import.meta.env.DEV) Object.assign(window, { __three: { gl, scene, camera } })
     return () => {

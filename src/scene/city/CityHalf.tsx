@@ -7,6 +7,8 @@ import type { Mesh } from 'three'
 import { makePalette, type Palette, type PaletteKey } from '../materials/palette'
 import type { Half } from '../materials/section'
 import { world } from '../../timeline/world'
+import { noise3 } from '../lib/sdf'
+import { WATER_LAYER } from '../WaterReflection'
 
 type PartSet = Partial<Record<PaletteKey, BufferGeometry>>
 
@@ -24,7 +26,9 @@ export type CityGeometries = {
 }
 
 /** Parts whose geometry is too thin or open to be capped meaningfully. */
-const UNCAPPED = new Set<PaletteKey>(['dark', 'water', 'foliage', 'trunk'])
+const UNCAPPED = new Set<PaletteKey>(['dark', 'water', 'foliage', 'trunk', 'iron', 'figure'])
+/** Too fine to cast a shadow worth its cost. */
+const NO_SHADOW = new Set<PaletteKey>(['dark', 'iron'])
 
 const NO_CAPS = import.meta.env.DEV && new URLSearchParams(location.search).get('caps') === '0'
 
@@ -79,7 +83,7 @@ export function CityHalf({ data, geo, half }: { data: CityData; geo: CityGeometr
     return (
       <>
         {keys.map((k) => (
-          <mesh key={k} geometry={set[k]} material={palette[k]} castShadow={k !== 'dark'} receiveShadow />
+          <mesh key={k} geometry={set[k]} material={palette[k]} castShadow={!NO_SHADOW.has(k)} receiveShadow />
         ))}
         <group ref={capRef(capIndex)} visible={false}>
           {keys.filter((k) => !UNCAPPED.has(k) && crossesCut(set[k]!, capIndex === 1)).map((k) => stencilPair(k, set[k]!))}
@@ -105,7 +109,7 @@ export function CityHalf({ data, geo, half }: { data: CityData; geo: CityGeometr
     </mesh>
     <group ref={group}>
       <mesh geometry={geo.terrain} material={palette.ground} receiveShadow />
-      <mesh geometry={geo.river} material={palette.water} receiveShadow />
+      <mesh geometry={geo.river} material={palette.water} receiveShadow ref={(m) => m?.layers.set(WATER_LAYER)} />
       <mesh geometry={geo.buildings} material={palette.buildings} castShadow receiveShadow />
       <group ref={capRef(0)} visible={false}>
         {stencilPair('terrain', geo.terrain)}
@@ -123,18 +127,39 @@ export function CityHalf({ data, geo, half }: { data: CityData; geo: CityGeometr
   )
 }
 
+/**
+ * A tree crown that is not a ball: a sphere pushed out of shape by noise into
+ * lobes, narrowing to the top like the poplars along the Tormes. Flat-shaded,
+ * so the light breaks over it in facets of foliage. One shape for every tree:
+ * each instance turns and scales it differently.
+ */
+function crownGeometry() {
+  const g = new IcosahedronGeometry(1, 2)
+  const p = g.getAttribute('position')
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i)
+    const k = 1 + noise3(x * 1.6, y * 1.6, z * 1.6) * 0.32 + noise3(x * 4.1 + 3, y * 4.1, z * 4.1) * 0.1
+    const taper = 1 - Math.max(0, y) * 0.28
+    p.setXYZ(i, x * k * taper, y * k, z * k * taper)
+  }
+  g.computeVertexNormals()
+  return g
+}
+
 function Trees({ trees, palette }: { trees: CityGeometries['trees']; palette: Palette }) {
   const crown = useRef<InstancedMesh>(null)
   const trunk = useRef<InstancedMesh>(null)
-  const geos = useMemo(() => ({ crown: new IcosahedronGeometry(1, 1), trunk: new CylinderGeometry(0.18, 0.28, 1, 6) }), [])
+  const geos = useMemo(() => ({ crown: crownGeometry(), trunk: new CylinderGeometry(0.18, 0.28, 1, 6) }), [])
   useLayoutEffect(() => {
-    const m = new Matrix4(), q = new Quaternion(), p = new Vector3(), s = new Vector3()
+    const m = new Matrix4(), q = new Quaternion(), p = new Vector3(), s = new Vector3(), up = new Vector3(0, 1, 0)
     trees.forEach((t, i) => {
-      p.set(t.x, t.y + t.h * 0.62, t.z)
-      s.set(t.r, t.h * 0.45, t.r)
+      p.set(t.x, t.y + t.h * 0.6, t.z)
+      s.set(t.r * 0.85, t.h * 0.47, t.r * 0.85)
+      q.setFromAxisAngle(up, (t.x * 13.7 + t.z * 7.1) % 6.28)
       crown.current?.setMatrixAt(i, m.compose(p, q, s))
       p.set(t.x, t.y + t.h * 0.2, t.z)
       s.set(1, t.h * 0.42, 1)
+      q.identity()
       trunk.current?.setMatrixAt(i, m.compose(p, q, s))
     })
     if (crown.current) crown.current.instanceMatrix.needsUpdate = true

@@ -185,7 +185,9 @@ export function buildExhibits(terrain: Terrain) {
   // ── roman: Vía de la Plata — polygonal paving, kerbs, milestones ──────────
   {
     const { z0, z1, depth } = LAYOUT.road
-    const flag = new BoxGeometry(1, 1, 1)
+    // each flag a worn block: a square frustum with soft (smooth-shaded) arrises
+    const flag = new CylinderGeometry(0.62, 0.71, 1, 4, 1)
+    flag.rotateY(Math.PI / 4)
     for (let z = z0; z < z1; z += 0.95) {
       const y = s(z) - depth
       let x = -3
@@ -193,7 +195,7 @@ export function buildExhibits(terrain: Terrain) {
         const w = 0.55 + rand() * 0.55
         const ww = Math.min(w, 3 - x)
         const h = 0.3 + rand() * 0.08
-        P.add('roman', flag, T(x + ww / 2, y - h / 2 + (rand() - 0.5) * 0.05, z + rand() * 0.1, (rand() - 0.5) * 0.25, [ww - 0.06, h, 0.86 + rand() * 0.06]))
+        P.add('roman', flag, T(x + ww / 2, y - h / 2 + (rand() - 0.5) * 0.04, z + 0.02 + rand() * 0.06, (rand() - 0.5) * 0.1, [ww - 0.03, h, 0.9 + rand() * 0.05]))
         x += ww
       }
     }

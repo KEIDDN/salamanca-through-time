@@ -25,13 +25,14 @@ export function buildMasterTimeline(root: HTMLElement) {
   const n = SHOT_TIMES.length - 1
   for (let i = 0; i < n; i++) {
     const a = SHOT_TIMES[i], b = SHOT_TIMES[i + 1]
-    // glide everywhere; ease into the first move and the holds (street level,
-    // the section drawing — arriving 7, held 8, leaving 9 — and the stone)
+    // glide everywhere; ease into the first move and the holds (the square
+    // seen whole — arriving 3, leaving 4 —, street level, the section drawing
+    // — arriving 8, held 9, leaving 10 — and the stone)
     const ease =
       i === 0 ? 'sine.in'
-      : i === 5 || i === 8 || i === 17 ? 'sine.inOut'
-      : i === 7 || i === n - 1 ? 'sine.out'
-      : i === 9 || i === 18 ? 'sine.in'
+      : i === 6 || i === 9 || i === 18 ? 'sine.inOut'
+      : i === 3 || i === 8 || i === n - 1 ? 'sine.out'
+      : i === 4 || i === 10 || i === 19 ? 'sine.in'
       : 'none'
     tl.fromTo(world, { cam: i / n }, { cam: (i + 1) / n, duration: b - a, ease, immediateRender: i === 0 }, a)
   }
@@ -113,6 +114,8 @@ export function buildMasterTimeline(root: HTMLElement) {
   tl.to(world.sky, { glow: 1, duration: now }, up)
   tl.to(world.fog, { near: 700, far: 4200, duration: now }, up)
   tl.to(world, { capAmbient: 0.75, lamp: 0, open: 0, duration: now }, up)
+  tl.to(world, { reflect: 1, duration: now }, up)
+  tl.to(world, { reflect: 0, duration: 2.5, ease: 'sine.in' }, 96.8) // rising away from the water
   tl.to(ex, { 3: 0, duration: now }, up)
   tl.to(world, { dusk: 1, duration: 7, ease: 'sine.in' }, 93)
   tl.to(sun, { elevation: 3, intensity: 3.6, duration: 6 }, 94)

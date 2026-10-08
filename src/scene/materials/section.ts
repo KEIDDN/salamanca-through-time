@@ -73,15 +73,23 @@ export const shared = {
   uSunDir: { value: new Vector3(0, 1, 0) },
   uSunCol: { value: new Color(1, 1, 1) },
   uHorizon: { value: new Color('#ebe6dd') },
+  uSkyTop: { value: new Color('#f1eee8') },
+  /** planar reflection of the river (0 = sky only) */
+  uReflect: { value: 0 },
+  uReflTex: { value: null as Texture | null },
+  uReflMatrix: { value: new Matrix4() },
   uFog: { value: new Vector4(2000, 4000, 0, 0) },
   uViewProj: { value: new Matrix4() },
   uHeightTex: { value: null as Texture | null },
   uHeightRect: { value: new Vector4() },
   uAoTex: { value: null as Texture | null },
   uAoRect: { value: new Vector4() },
+  /** Plaza Mayor: centre (x, z) and its east axis; half extents east / north */
+  uPlaza: { value: new Vector4(0, 0, 1, 0) },
+  uPlazaHalf: { value: new Vector4(40, 40, 0, 0) },
 }
 
-export type SectionKind = 'building' | 'ground' | 'stone' | 'water' | 'foliage' | 'soil'
+export type SectionKind = 'building' | 'ground' | 'stone' | 'water' | 'foliage' | 'soil' | 'iron' | 'figure' | 'plaza'
 
 export type SectionOptions = {
   half: Half
@@ -97,6 +105,8 @@ export type SectionOptions = {
   vertexColors?: boolean
   extraClip?: Plane[]
   doubleSided?: boolean
+  /** cut-out patterns (ironwork) resolved by MSAA coverage instead of blending */
+  alphaToCoverage?: boolean
 }
 
 /* ── shared GLSL ───────────────────────────────────────────────────────── */
@@ -111,6 +121,8 @@ const GLSL_COMMON = /* glsl */ `
   uniform sampler2D uAoTex;
   uniform vec4 uAoRect;
   uniform float uOffset;
+  uniform vec4 uPlaza;
+  uniform vec4 uPlazaHalf;
 
   // sin-free hash (Hoskins): stable at large world coordinates, cheaper on every GPU
   float sHash(vec2 p) {
@@ -134,33 +146,76 @@ const GLSL_COMMON = /* glsl */ `
     return texture2D(uHeightTex, (xz - uHeightRect.xy) * uHeightRect.zw).r;
   }
 
-  // Archaeological section, as drawn in an excavation report.
+  // White model → golden city, as light rather than a filter: the stone
+  // takes its colour from the Plaza Mayor outwards, a soft, uneven front
+  // spreading through the streets as the sun lowers.
+  float goldAt(vec3 p) {
+    if (uGold <= 0.0) return 0.0;
+    if (uGold >= 1.0) return 1.0;
+    float d = length(p.xz - uPlaza.xy);
+    float n = (sNoise(p.xz * 0.006) - 0.5) * 240.0 + (sNoise(p.xz * 0.035) - 0.5) * 60.0;
+    float R = uGold * 2050.0 - 200.0;
+    return smoothstep(R + 160.0, R - 160.0, d + n);
+  }
+
+  // Archaeological section, as exposed in a museum excavation: natural
+  // soils, each era with its own inclusions, the interfaces between them
+  // marked by a fine string line as archaeologists pin them.
   vec3 strataColor(vec3 p, float colourful) {
     float depth = surfaceAt(p.xz) - p.y;
     float h = p.z + p.x * 0.35;
     float wob = (sNoise(vec2(h * 0.015, 3.1)) - 0.5) * 2.4 + (sNoise(vec2(h * 0.09, 7.3)) - 0.5) * 0.7;
     float d = depth - wob;
     vec3 c;
-    if (d < 2.5)       c = vec3(0.70, 0.64, 0.56);   // modern fill & paving
-    else if (d < 11.0) c = vec3(0.52, 0.39, 0.27);   // medieval
-    else if (d < 20.0) c = vec3(0.60, 0.35, 0.23);   // roman
-    else if (d < 30.0) c = vec3(0.33, 0.27, 0.22);   // iron age
-    else               c = vec3(0.84, 0.63, 0.34);   // Villamayor sandstone
-    // soil, not wood: near-isotropic clods and grit, only faint bedding
-    float g = sNoise(vec2(h * 0.5, p.y * 0.8)) * 0.5 + sNoise(vec2(h * 2.6, p.y * 3.2)) * 0.3 + sNoise(vec2(h * 9.0, p.y * 9.5)) * 0.2;
-    c *= 0.88 + 0.22 * g;
-    c *= 0.975 + 0.025 * sin(p.y * 7.0 + sNoise(vec2(h * 0.05, p.y)) * 3.0); // laminations
-    float pebble = step(0.965, sHash(floor(vec2(h * 1.4, p.y * 2.0))));
-    c *= 1.0 - 0.1 * pebble;
-    if (d > 30.0) c *= 0.95 + 0.05 * sin(p.y * 1.9 + sNoise(vec2(h * 0.01, p.y * 0.2)) * 2.0);
+    float layer;
+    if (d < 2.5)       { c = vec3(0.60, 0.56, 0.50); layer = 0.0; }  // modern fill & paving
+    else if (d < 11.0) { c = vec3(0.46, 0.37, 0.28); layer = 1.0; }  // medieval
+    else if (d < 20.0) { c = vec3(0.53, 0.36, 0.25); layer = 2.0; }  // roman
+    else if (d < 30.0) { c = vec3(0.30, 0.25, 0.21); layer = 3.0; }  // iron age
+    else               { c = vec3(0.78, 0.60, 0.37); layer = 4.0; }  // Villamayor sandstone
+    // soil: isotropic clods and grit, faint bedding
+    vec2 sp = vec2(h, p.y);
+    float g = sNoise(sp * 0.7) * 0.45 + sNoise(sp * 2.9 + 3.0) * 0.33 + sNoise(sp * 11.0 + 7.0) * 0.22;
+    c *= 0.86 + 0.26 * g;
+    c *= 0.985 + 0.015 * sin(p.y * 6.0 + sNoise(vec2(h * 0.05, p.y)) * 3.0);
+    // inclusions, one cell of ~25 cm at a time
+    vec2 cell = floor(sp * vec2(4.0, 4.0));
+    float r = sHash(cell + layer * 17.0);
+    vec2 f = fract(sp * 4.0) - 0.5;
+    float blob = 1.0 - smoothstep(0.18, 0.32, length(f * vec2(1.0, 1.0 + 0.8 * sHash(cell + 3.0))));
+    if (layer == 1.0) {
+      c = mix(c, vec3(0.62, 0.58, 0.52), blob * step(0.93, r));          // rubble
+      c = mix(c, vec3(0.16, 0.13, 0.11), blob * step(0.985, 1.0 - r) * 0.8); // charcoal
+    } else if (layer == 2.0) {
+      float shard = (1.0 - smoothstep(0.08, 0.14, abs(f.y))) * (1.0 - smoothstep(0.3, 0.42, abs(f.x)));
+      c = mix(c, vec3(0.62, 0.30, 0.18), shard * step(0.94, r));        // tegula and sherds
+      c = mix(c, vec3(0.66, 0.62, 0.55), blob * step(0.975, 1.0 - r));  // gravel
+    } else if (layer == 3.0) {
+      c = mix(c, vec3(0.12, 0.10, 0.09), blob * step(0.95, r) * 0.9);   // hearth charcoal
+      c = mix(c, vec3(0.55, 0.53, 0.50), blob * step(0.985, 1.0 - r));  // granite cobbles
+    } else if (layer == 4.0) {
+      c *= 0.95 + 0.05 * sin(p.y * 1.9 + sNoise(vec2(h * 0.01, p.y * 0.2)) * 2.0);
+      float band = smoothstep(0.92, 0.99, sin((p.y * 1.3 + h * 0.08 + sNoise(sp * 0.3) * 2.5) * 2.4));
+      c = mix(c, vec3(0.56, 0.32, 0.17), band * 0.4 * smoothstep(0.35, 0.75, sNoise(sp * 0.12 + 5.0))); // Liesegang oxide, broken
+    }
+    // the interfaces: a thin pinned string over a darker contact
     float line = min(min(abs(d - 2.5), abs(d - 11.0)), min(abs(d - 20.0), abs(d - 30.0)));
-    c = mix(c, vec3(0.95, 0.9, 0.82), (1.0 - smoothstep(0.0, 0.14, line)) * 0.6);
+    c *= 0.82 + 0.18 * smoothstep(0.0, 0.5, line);
+    c = mix(c, vec3(0.86, 0.82, 0.74), (1.0 - smoothstep(0.02, 0.06, line)) * 0.45);
+    // gently darker with depth: the light of the gallery comes from above
+    c *= mix(1.0, 0.82, smoothstep(0.0, 45.0, depth));
     vec3 paper = vec3(0.86, 0.84, 0.80) * (0.96 + 0.04 * g);
     paper = mix(paper, paper * 0.78, 1.0 - smoothstep(0.0, 0.12, line));
     return sLin(mix(paper, c, colourful));
   }
 
-  vec3 pocheColor() { return mix(vec3(0.55, 0.53, 0.50), vec3(0.34, 0.23, 0.15), uGold); }
+  // poché: the cut through built matter, solid and quiet, finely hatched
+  vec3 pocheColor(vec3 p) {
+    vec3 c = mix(vec3(0.58, 0.56, 0.53), vec3(0.30, 0.26, 0.22), uGold);
+    float hatch = smoothstep(0.82, 0.92, abs(fract((p.y + p.z) * 1.6) - 0.5) * 2.0);
+    c *= 1.0 - hatch * 0.06 * (1.0 - smoothstep(0.3, 1.0, fwidth((p.y + p.z) * 1.6)));
+    return sLin(c);
+  }
 `
 
 /* ── front faces ───────────────────────────────────────────────────────── */
@@ -176,6 +231,15 @@ const FRONT_PARS = /* glsl */ `
   varying vec3 vWorldNormal;
   varying vec3 vInfo;
   float sWinLit = 0.0;
+  uniform vec3 uSunDir;
+  #ifdef SECTION_WATER
+    uniform float uTime;
+    uniform float uReflect;
+    uniform vec3 uSkyTop;
+    uniform vec3 uSunCol;
+    uniform mat4 uReflMatrix;
+    uniform sampler2D uReflTex;
+  #endif
 
   float ashlarMask(vec3 p, vec3 n) {
     vec2 uv = abs(n.x) > abs(n.z) ? p.zy : p.xy;
@@ -200,11 +264,12 @@ const FRONT_COLOR = /* glsl */ `
     #endif
     vec3 wn = normalize(vWorldNormal);
     vec3 p = vWorldPos - vec3(uOffset, 0.0, 0.0);
-    vec3 col = mix(uBase, uGoldCol, uGold);
+    float gold = goldAt(p);
+    vec3 col = mix(uBase, uGoldCol, gold);
     // sandstone grain, stronger in the golden city
     vec2 gp = p.xz * 0.9 + p.y * 0.7;
     float grain = sNoise(gp) * 0.67 + sNoise(gp * 2.03) * 0.33;
-    col *= 1.0 + (grain - 0.5) * 0.12 * uGold;
+    col *= 1.0 + (grain - 0.5) * 0.12 * gold;
 
     #ifdef SECTION_BUILDING
       float ground = vInfo.x;
@@ -226,27 +291,40 @@ const FRONT_COLOR = /* glsl */ `
           * (1.0 - smoothstep(0.78 - aa.y, 0.78 + aa.y, fy)) * step(0.0, hgt);
         float fade = 1.0 - smoothstep(0.2, 0.55, max(aa.x, aa.y));
         float win = max(wx * wy * upper, shop) * fade;
-        col = mix(col, vec3(0.045, 0.035, 0.03), win * uGold * 0.9);
+        col = mix(col, vec3(0.045, 0.035, 0.03), win * gold * 0.9);
         float lit = step(0.62, sHash(vec2(floor(u) + roofY * 3.7, fl)));
-        sWinLit = win * lit * uGold;
+        sWinLit = win * lit * gold;
         // base occlusion and a shadowed cornice line under the roof
         col *= mix(0.58, 1.0, smoothstep(0.0, 6.0, hgt));
         float corn = smoothstep(roofY - 1.1, roofY - 0.9, p.y) - smoothstep(roofY - 0.55, roofY - 0.35, p.y);
-        col *= 1.0 - corn * 0.22 * uGold;
+        col *= 1.0 - corn * 0.22 * gold;
       } else {
-        // roofs: clay tile courses, or flat modern roofs
-        float tiles = 0.88 + 0.12 * smoothstep(0.2, 0.8, abs(sin(p.x * 3.2 + sNoise(p.xz * 0.2) * 2.0)));
-        vec3 clay = uRoof * (0.82 + 0.36 * sNoise(p.xz * 0.06 + roofY)) * tiles;
+        // roofs: Arab clay tile — channels running down the slope, courses
+        // across it — each roof fired a little differently and darkened by
+        // weather towards the eaves; or flat modern roofs
+        vec2 fall = wn.xz;
+        float sl = length(fall);
+        vec2 across = sl > 0.04 ? vec2(-fall.y, fall.x) / sl : vec2(1.0, 0.0);
+        float ch = dot(p.xz, across) / 0.32;
+        float co = dot(p.xz, sl > 0.04 ? fall / sl : vec2(0.0, 1.0)) / 0.42;
+        float chAA = fwidth(ch), coAA = fwidth(co);
+        float tile = (0.9 + 0.1 * (1.0 - abs(fract(ch) * 2.0 - 1.0))) * (1.0 - 0.06 * smoothstep(0.7, 0.98, fract(co + 0.5 * floor(ch))));
+        tile = mix(tile, 0.95, smoothstep(0.25, 0.8, max(chAA, coAA)));
+        float roofId = sHash(vec2(roofY * 3.1, ground * 1.7));
+        vec3 clay = uRoof * mix(vec3(0.84, 0.86, 0.92), vec3(1.1, 1.0, 0.94), roofId);
+        clay *= 0.86 + 0.24 * sNoise(p.xz * 0.11 + roofY) ;
+        clay = mix(clay, clay * vec3(0.78, 0.8, 0.74), smoothstep(0.55, 0.85, sNoise(p.xz * 0.35 + 9.0)) * 0.5); // lichen, soot
+        clay *= tile * mix(0.8, 1.0, smoothstep(0.0, 0.9, p.y - roofY));
         vec3 flatRoof = vec3(0.44, 0.41, 0.37) * (0.9 + 0.2 * sNoise(p.xz * 0.3));
         vec3 roof = mix(clay, flatRoof, vInfo.z);
-        col = mix(uBase * 1.03, roof, uGold);
+        col = mix(uBase * 1.03, roof, gold);
       }
     #endif
 
     #if defined(SECTION_STONE) || defined(SECTION_FOLIAGE)
       float up = smoothstep(0.55, 0.8, wn.y);
-      col = mix(col, mix(uBase * 1.03, uRoof, uGold), up);
-      if (uAshlar > 0.0) col *= 1.0 - uAshlar * ashlarMask(p, wn) * (0.4 + 0.6 * uGold);
+      col = mix(col, mix(uBase * 1.03, uRoof, gold), up);
+      if (uAshlar > 0.0) col *= 1.0 - uAshlar * ashlarMask(p, wn) * (0.4 + 0.6 * gold);
       col *= mix(0.62, 1.0, smoothstep(0.0, 5.0, p.y - uBaseY));
     #endif
 
@@ -263,9 +341,9 @@ const FRONT_COLOR = /* glsl */ `
         col *= 0.97 + 0.06 * sNoise(p.xz * 0.05);
         // riverbanks and the Arrabal: meadows and huertas
         float low = smoothstep(-9.0, -16.0, p.y);
-        col = mix(col, sLin(vec3(0.43, 0.46, 0.30)) * (0.8 + 0.4 * sNoise(p.xz * 0.08)), low * uGold * 0.75);
+        col = mix(col, sLin(vec3(0.43, 0.46, 0.30)) * (0.8 + 0.4 * sNoise(p.xz * 0.08)), low * gold * 0.75);
         float slope = 1.0 - smoothstep(0.82, 0.97, wn.y);
-        col = mix(col, sLin(vec3(0.55, 0.45, 0.32)), slope * uGold * 0.6);
+        col = mix(col, sLin(vec3(0.55, 0.45, 0.32)), slope * gold * 0.6);
         col *= 1.0 - ao * 0.55;
       }
     #endif
@@ -278,11 +356,62 @@ const FRONT_COLOR = /* glsl */ `
       } else {
         float clod = sFbm(p.xz * 0.35) * 0.6 + sNoise(p.xz * 3.1) * 0.25 + sNoise(p.xz * 11.0) * 0.15;
         col = uBase * (0.72 + 0.5 * clod);
-        col = mix(col, strataColor(p + vec3(0.0, -0.5, 0.0), 1.0) * 0.7, 0.35);
+        col = mix(col, strataColor(p + vec3(0.0, -0.5, 0.0), 1.0) * 0.7, 0.2);
       }
     #endif
 
-    col *= tint;
+    #ifdef SECTION_FIGURE
+      // white figurines in the model, dressed in the golden city
+      col = mix(uBase, tint, gold);
+    #else
+      col *= tint;
+    #endif
+
+    #ifdef SECTION_IRON
+      // wrought-iron balusters: thin bars across the panel, resolved as
+      // coverage so they stay crisp up close and fade to a veil far away
+      vec2 tng = normalize(vec2(-wn.z, wn.x) + 1e-5);
+      float bu = dot(p.xz, tng) / 0.115;
+      float bf = abs(fract(bu) - 0.5) * 2.0;
+      float bw = fwidth(bf) * 0.75 + 1e-4;
+      float cov = 1.0 - smoothstep(0.24 - bw, 0.24 + bw, bf);
+      cov = mix(cov, 0.3, smoothstep(0.3, 0.8, fwidth(bu)));
+      diffuseColor.a = cov;
+    #endif
+
+    #ifdef SECTION_PLAZA
+      if (wn.y > 0.5) {
+        // granite paving of the square: a grid of dark strips over pale
+        // slabs in running bond, a border, and a ring at the centre
+        vec2 d = p.xz - uPlaza.xy;
+        vec2 q = vec2(dot(d, uPlaza.zw), dot(d, vec2(uPlaza.w, -uPlaza.z)));
+        float aa = max(fwidth(q.x), fwidth(q.y));
+        vec2 g = abs(fract(q / 6.6 + 0.5) - 0.5) * 6.6;
+        float strip = 1.0 - smoothstep(0.14, 0.14 + aa * 1.5, min(g.x, g.y));
+        float edge = min(uPlazaHalf.x - abs(q.x), uPlazaHalf.y - abs(q.y));
+        float band = 1.0 - smoothstep(2.4, 2.4 + aa * 1.5, edge);
+        band = max(band, (1.0 - smoothstep(0.12, 0.12 + aa * 1.5, abs(edge - 3.0))));
+        float r = length(q);
+        float ring = 1.0 - smoothstep(0.22, 0.22 + aa * 1.5, abs(r - 6.0));
+        ring = max(ring, 1.0 - smoothstep(0.12, 0.12 + aa * 1.5, abs(r - 6.9)));
+        float granite = max(max(strip, band), ring);
+        vec2 sv = q / vec2(1.1, 0.55);
+        sv.x += 0.5 * mod(floor(sv.y), 2.0);
+        vec2 sj = abs(fract(sv) - 0.5) * 2.0;
+        float jaa = fwidth(sv.y) * 1.5;
+        float joint = max(smoothstep(0.93 - jaa, 0.97 + jaa, sj.x), smoothstep(0.9 - jaa, 0.96 + jaa, sj.y));
+        joint *= 1.0 - smoothstep(0.08, 0.3, jaa);
+        float slab = sHash(floor(sv) + 17.0);
+        vec3 field = col * (0.95 + 0.08 * slab);
+        vec3 dark = col * mix(0.93, 0.74, gold) * vec3(0.97, 0.98, 1.02);
+        col = mix(field, dark, granite);
+        col *= 1.0 - joint * mix(0.05, 0.14, gold);
+        // worn smooth where people walk, darker by the arcades
+        col *= 0.96 + 0.06 * sNoise(q * 0.08);
+        col *= mix(0.86, 1.0, smoothstep(0.0, 5.0, edge));
+      }
+    #endif
+
     diffuseColor.rgb = col;
   }
 `
@@ -297,6 +426,7 @@ export function makeSectionMaterial(o: SectionOptions) {
     vertexColors: o.vertexColors ?? false,
     clippingPlanes: [o.half.plane, ...(o.extraClip ?? [])],
     clipShadows: true,
+    alphaToCoverage: o.alphaToCoverage ?? false,
   })
   const local = {
     uBase: { value: new Color(o.base ?? '#f3f0ea') },
@@ -347,17 +477,57 @@ export function makeSectionMaterial(o: SectionOptions) {
         totalEmissiveRadiance += vec3(1.0, 0.58, 0.26) * sWinLit * uDusk * 2.2;
         #ifdef SECTION_SOIL
           // the same lantern falloff as the cut faces, so floor and walls read as one excavation
-          totalEmissiveRadiance += diffuseColor.rgb * uLamp * (exp(-length(vWorldPos - cameraPosition) * 0.011) * 0.75 + 0.08);
+          totalEmissiveRadiance += diffuseColor.rgb * uLamp * (exp(-length(vWorldPos - cameraPosition) * 0.013) * 0.6 + 0.05);
+        #endif`,
+      )
+      .replace(
+        '#include <fog_fragment>',
+        `#ifdef USE_FOG
+        {
+          // aerial perspective: the haze is warm towards the sun, cool and
+          // bluish away from it — only in the golden city, the paper model
+          // keeps a neutral mist
+          vec3 vd = normalize(vWorldPos - cameraPosition);
+          float toSun = pow(max(dot(vd, uSunDir), 0.0), 3.0);
+          vec3 fogC = mix(fogColor, fogColor * mix(vec3(0.9, 0.95, 1.07), vec3(1.06, 1.0, 0.91), toSun), uGold);
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, fogC, smoothstep(fogNear, fogFar, vFogDepth));
+        }
         #endif`,
       )
       .replace(
         '#include <opaque_fragment>',
         `#ifdef SECTION_WATER
         {
+          // the Tormes: a slow current of small ripples; a dark body seen
+          // from above, a mirror of the sky (and, on the river, of the city)
+          // towards the horizon — Fresnel decides between them
           vec3 V = normalize(cameraPosition - vWorldPos);
-          float fres = pow(1.0 - max(V.y, 0.0), 3.0);
-          float ripple = 0.86 + 0.14 * sNoise((vWorldPos.xz - vec2(uOffset, 0.0)) * vec2(0.06, 0.45) + vec2(0.0, uGold * 2.0));
-          outgoingLight = mix(outgoingLight, uHorizon * ripple, clamp(fres * mix(0.3, 0.95, uGold), 0.0, 1.0));
+          vec2 wp = vWorldPos.xz - vec2(uOffset, 0.0);
+          float t = uTime;
+          vec2 q1 = wp * vec2(0.11, 0.6) + vec2(0.0, t * 0.22);
+          vec2 q2 = wp * vec2(0.42, 1.7) + vec2(t * 0.13, -t * 0.4);
+          const float E = 0.35;
+          float h = sNoise(q1) + 0.45 * sNoise(q2);
+          float hx = sNoise(q1 + vec2(E * 0.11, 0.0)) + 0.45 * sNoise(q2 + vec2(E * 0.42, 0.0));
+          float hz = sNoise(q1 + vec2(0.0, E * 0.6)) + 0.45 * sNoise(q2 + vec2(0.0, E * 1.7));
+          // ripples calm down with distance, so the far river reads as a sheet
+          float calm = 1.0 - smoothstep(60.0, 600.0, length(cameraPosition - vWorldPos));
+          vec3 N = normalize(vec3(-(hx - h) * 0.42 * calm, 1.0, -(hz - h) * 0.42 * calm));
+          float cosT = clamp(dot(N, V), 0.0, 1.0);
+          float F = 0.02 + 0.98 * pow(1.0 - cosT, 5.0);
+          vec3 R = reflect(-V, N);
+          vec3 sky = mix(uHorizon, uSkyTop, smoothstep(0.0, 0.55, R.y));
+          if (uReflect > 0.001) {
+            vec4 rp = uReflMatrix * vec4(vWorldPos + vec3(N.x, 0.0, N.z) * 1.4, 1.0);
+            vec2 ruv = rp.xy / rp.w;
+            vec3 planar = texture2D(uReflTex, clamp(ruv, 0.001, 0.999)).rgb;
+            // where the mirror's view runs out (just under the lens), the sky takes over
+            vec2 inb = smoothstep(0.0, 0.08, ruv) * smoothstep(1.0, 0.92, ruv);
+            sky = mix(sky, planar, uReflect * inb.x * inb.y);
+          }
+          sky += uSunCol * pow(max(dot(R, uSunDir), 0.0), 220.0) * 5.0 * uGold;
+          vec3 body = outgoingLight * mix(1.0, 0.75, uGold);
+          outgoingLight = mix(body, sky, clamp(F * mix(0.35, 1.0, uGold), 0.0, 1.0));
         }
         #endif
         #include <opaque_fragment>`,
@@ -431,10 +601,11 @@ export function makeCapMaterial(half: Half) {
       varying vec3 vWorldPos;
       void main() {
         vec3 q = vWorldPos - vec3(uOffset, 0.0, 0.0);
-        vec3 cap = q.y > surfaceAt(q.xz) + 0.15 ? pocheColor() : strataColor(q, uStrata);
+        bool poche = q.y > surfaceAt(q.xz) + 0.15;
+        vec3 cap = poche ? pocheColor(q) : strataColor(q, uStrata);
         float sun = max(dot(-uPlane.xyz, uSunDir), 0.0); // the face looks away from the kept side
         float dist = length(vWorldPos - cameraPosition);
-        float lamp = uLamp * (exp(-dist * 0.011) * 1.25 + 0.1);
+        float lamp = uLamp * (exp(-dist * 0.013) * 1.0 + 0.06) * (poche ? 0.35 : 1.0);
         vec3 light = vec3(uCapAmbient * 0.55) + uSunCol * sun * 0.45 * uCapAmbient + vec3(lamp);
         vec3 c = cap * light;
         c = mix(c, uHorizon, smoothstep(uFog.x, uFog.y, dist));

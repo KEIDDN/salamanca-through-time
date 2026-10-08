@@ -81,6 +81,11 @@ export function useScrollTimeline(root: RefObject<HTMLElement | null>, track: Re
           gsap.killTweensOf(tl)
           tl.totalProgress(p / 100)
         },
+        // seek and let the frame settle — for screenshots
+        __shot: (p: number) => {
+          ;(window as unknown as { __seek: (p: number) => void }).__seek(p)
+          return new Promise((r) => setTimeout(r, 1400))
+        },
       })
     }
 

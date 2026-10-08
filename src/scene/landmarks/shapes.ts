@@ -53,3 +53,12 @@ export function extrudeShape(shape: Shape, depth: number) {
   g.translate(0, 0, -depth / 2)
   return g
 }
+
+/**
+ * The band between two arch outlines that share their base line (an
+ * archivolt, a hood mould): a single ∩-shaped polygon, so it triangulates
+ * cleanly. Outlines start with their two base corners, left then right.
+ */
+export function archBand(outer: Vector2[], inner: Vector2[]) {
+  return new Shape([...outer.slice(1), outer[0], inner[0], ...inner.slice(1).reverse()])
+}

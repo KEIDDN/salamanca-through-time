@@ -1,8 +1,43 @@
-import { ConeGeometry, CylinderGeometry, Shape, SphereGeometry, Vector2, Vector3 } from 'three'
+import { BufferAttribute, BufferGeometry, CatmullRomCurve3, ConeGeometry, CylinderGeometry, LatheGeometry, Shape, SphereGeometry, TubeGeometry, Vector2, Vector3 } from 'three'
 import { orientedRect, type CityData } from '../lib/cityData'
 import { extrudeFootprint } from '../city/geometry'
+import { buildingSolid, cleanRing, type SolidOut } from '../city/massing'
 import { Parts, T } from '../lib/parts'
-import { archHole, extrudeShape } from './shapes'
+import { archBand, archHole, extrudeShape } from './shapes'
+import { dressWalls } from './dress'
+
+/** A footprint as a closed solid under a hipped clay roof (see ../city/massing). */
+function roofed(ring: [number, number][], height: number, depth: number) {
+  const out: SolidOut = { pos: [], nor: [] }
+  buildingSolid(out, cleanRing(ring), [], 0, height, { type: 'pitched', pitch: 0.5, inset: () => depth })
+  const g = new BufferGeometry()
+  g.setAttribute('position', new BufferAttribute(new Float32Array(out.pos), 3))
+  g.setAttribute('normal', new BufferAttribute(new Float32Array(out.nor), 3))
+  return g
+}
+
+const roundArch = (w: number, h: number, seg = 10) => {
+  const r = w / 2
+  const pts: Vector2[] = [new Vector2(-r, 0), new Vector2(r, 0)]
+  for (let k = 0; k <= seg; k++) {
+    const a = (k / seg) * Math.PI
+    pts.push(new Vector2(r * Math.cos(a), h - r + r * Math.sin(a)))
+  }
+  return pts
+}
+
+/** A ribbed stone dome: shell, eight ribs, on a profile rising to h. */
+function ribbedDome<K extends string>(P: Parts<K>, key: K, x: number, y: number, z: number, r: number, h: number, yaw = 0) {
+  const prof: Vector2[] = []
+  for (let k = 0; k <= 12; k++) {
+    const t = (k / 12) * (Math.PI / 2)
+    prof.push(new Vector2(Math.max(r * Math.cos(t) ** 0.9, 0.001), h * Math.sin(t) ** 1.15))
+  }
+  P.add(key, new LatheGeometry(prof, 28), T(x, y, z))
+  const rib = new TubeGeometry(new CatmullRomCurve3(prof.slice(0, -1).map((p) => new Vector3(p.x + 0.1, p.y + 0.04, 0))), 16, r * 0.025, 5, false)
+  for (let k = 0; k < 8; k++) P.add(key, rib, T(x, y, z, (k / 8) * Math.PI * 2 + yaw))
+  rib.dispose()
+}
 
 /**
  * The old town along the Rúa: La Clerecía (twin baroque towers and dome),
@@ -27,6 +62,10 @@ export function buildOldTown(data: CityData) {
     if (u.dot(conchasC.clone().sub(C)) < 0) u.negate()
     const yaw = Math.atan2(-u.z, u.x)
     P.add('sandstone', extrudeFootprint(L.clerecia, 17))
+    dressWalls(P, L.clerecia, {
+      height: 17, wall: 'sandstone', trim: 'sandstonePlain', dark: 'dark', bay: 5.5,
+      pier: { w: 0.8, d: 0.3 }, window: { outline: roundArch(1.4, 3.4), y: 8.5, hood: roundArch(1.9, 3.65) }, cornice: true,
+    })
     P.frame(T(C.x, 0, C.z, yaw), () => {
       const len = r.len, wid = r.wid
       // nave with a pitched roof
@@ -40,10 +79,16 @@ export function buildOldTown(data: CityData) {
       // crossing dome
       const dx = -len * 0.12
       P.add('sandstone', new CylinderGeometry(7.4, 7.4, 8, 24), T(dx, 31, 0))
-      P.box('sandstonePlain', dx - 7.8, 34.6, -7.8, dx + 7.8, 35.2, 7.8)
-      P.add('cathedral', new SphereGeometry(7.6, 28, 12, 0, Math.PI * 2, 0, Math.PI / 2), T(dx, 35, 0, 0, [1, 1.2, 1]))
-      P.add('sandstone', new CylinderGeometry(1.4, 1.6, 4, 10), T(dx, 46.6, 0))
-      P.add('cathedral', new ConeGeometry(1.6, 3, 10), T(dx, 50, 0))
+      P.add('sandstonePlain', new CylinderGeometry(7.8, 7.8, 0.6, 24), T(dx, 34.9, 0))
+      const dw = extrudeShape(new Shape(roundArch(1.3, 3.2)), 0.1)
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2
+        P.add('dark', dw, T(dx + Math.cos(a) * 7.42, 29.2, -Math.sin(a) * 7.42, a + Math.PI / 2))
+      }
+      dw.dispose()
+      ribbedDome(P, 'sandstonePlain', dx, 35.2, 0, 7.5, 8.6)
+      P.add('sandstone', new CylinderGeometry(1.4, 1.6, 4, 10), T(dx, 45.6, 0))
+      P.add('sandstonePlain', new ConeGeometry(1.6, 3, 10), T(dx, 49, 0))
       // façade frontispiece between the towers
       const fx = len / 2 - 3
       P.box('sandstone', fx - 4, 0, -7.5, fx + 1.2, 31, 7.5)
@@ -53,22 +98,38 @@ export function buildOldTown(data: CityData) {
       pg.translate(fx, 31, 0)
       P.add('sandstone', pg)
       pg.dispose()
-      for (let k = -2; k <= 2; k++) P.box('sandstonePlain', fx + 1.2, 2, k * 3 - 0.35, fx + 1.75, 30, k * 3 + 0.35) // giant order
+      for (const k of [-2, -1, 1, 2]) P.box('sandstonePlain', fx + 1.2, 2, k * 3 - 0.35, fx + 1.75, 30, k * 3 + 0.35) // giant order
       for (const y of [10, 20.5, 30]) P.box('sandstonePlain', fx + 1.1, y, -7.6, fx + 2.1, y + 0.8, 7.6)
-      P.box('dark', fx + 1.25, 0.3, -1.8, fx + 1.3, 7.5, 1.8) // portal
+      // portal under its arch, niches with saints in the bays of the giant order
+      const portal = extrudeShape(new Shape(roundArch(3.6, 7.6)), 0.1)
+      P.add('dark', portal, T(fx + 1.24, 0.2, 0, Math.PI / 2))
+      portal.dispose()
+      const frame = extrudeShape(archBand(roundArch(4.6, 8.1), roundArch(3.6, 7.6)), 0.3)
+      P.add('sandstonePlain', frame, T(fx + 1.3, 0.2, 0, Math.PI / 2))
+      frame.dispose()
+      const niche = extrudeShape(new Shape(roundArch(1.3, 3)), 0.1)
+      for (const k of [-1.5, 1.5]) for (const y of [12, 22.5]) P.add('dark', niche, T(fx + 1.24, y, k * 3, Math.PI / 2))
+      for (const y of [12, 22.5]) P.add('dark', niche, T(fx + 1.24, y + 0.6, 0, Math.PI / 2, [1.4, 1.2, 1]))
+      niche.dispose()
       // the twin towers
       for (const s of [-1, 1]) {
         const tz = s * 11.2
         P.box('sandstone', fx - 7, 0, tz - 3.9, fx + 0.8, 36, tz + 3.9)
         P.box('sandstonePlain', fx - 7.4, 36, tz - 4.3, fx + 1.2, 37, tz + 4.3)
         P.box('sandstone', fx - 6.4, 37, tz - 3.3, fx + 0.2, 46, tz + 3.3)
-        for (const [ox, oz] of [[0.25, 0], [-6.65, 0], [-3.1, 3.35], [-3.1, -3.35]] as const) {
-          P.frame(T(fx + ox, 0, tz + oz, Math.abs(oz) > 0 ? 0 : Math.PI / 2), () => P.box('dark', -1.1, 38.5, -0.1, 1.1, 44, 0.1))
+        const bell = extrudeShape(new Shape(roundArch(2.2, 5.4)), 0.12)
+        const hood = extrudeShape(archBand(roundArch(2.8, 5.7), roundArch(2.2, 5.4)), 0.2)
+        for (const [ox, oz, ry] of [[0.2, 0, Math.PI / 2], [-6.4, 0, -Math.PI / 2], [-3.1, 3.3, 0], [-3.1, -3.3, Math.PI]] as const) {
+          P.add('dark', bell, T(fx + ox, 38.6, tz + oz, ry))
+          P.add('sandstonePlain', hood, T(fx + ox + Math.sin(ry) * 0.08, 38.6, tz + oz + Math.cos(ry) * 0.08, ry))
         }
+        bell.dispose()
+        hood.dispose()
         P.box('sandstonePlain', fx - 6.8, 46, tz - 3.7, fx + 0.6, 46.8, tz + 3.7)
         P.add('sandstone', new CylinderGeometry(2.3, 2.6, 4.5, 8), T(fx - 3.1, 49, tz, Math.PI / 8))
-        P.add('cathedral', new SphereGeometry(2.4, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), T(fx - 3.1, 51.2, tz, 0, [1, 1.3, 1]))
-        P.add('cathedral', new ConeGeometry(0.6, 3.4, 8), T(fx - 3.1, 56, tz))
+        ribbedDome(P, 'sandstonePlain', fx - 3.1, 51.2, tz, 2.45, 3.1)
+        P.add('sandstonePlain', new CylinderGeometry(0.5, 0.6, 1.4, 8), T(fx - 3.1, 54.9, tz))
+        P.add('sandstonePlain', new ConeGeometry(0.6, 2.8, 8), T(fx - 3.1, 57, tz))
         for (const [ox, oz] of [[0.4, 3.5], [0.4, -3.5], [-6.6, 3.5], [-6.6, -3.5]] as const)
           P.add('sandstonePlain', new SphereGeometry(0.45, 10, 8), T(fx + ox, 47.3, tz + oz))
       }
@@ -78,7 +139,7 @@ export function buildOldTown(data: CityData) {
   // ── Casa de las Conchas (1493–1517) ─────────────────────────────────────
   {
     const ring = L.conchas
-    P.add('sandstone', extrudeFootprint(ring, 15.5))
+    P.add('sandstone', roofed(ring, 15.5, 5))
     const clereciaC = centroid(L.clerecia)
     const shell = new SphereGeometry(0.17, 6, 4, 0, Math.PI * 2, 0, Math.PI / 2)
     shell.rotateX(Math.PI / 2) // dome facing +z
@@ -122,7 +183,11 @@ export function buildOldTown(data: CityData) {
   // ── Escuelas Mayores (XV–XVI c.) ────────────────────────────────────────
   {
     const ring = L.escuelas
-    P.add('sandstone', extrudeFootprint(ring, 15))
+    P.add('sandstone', roofed(ring, 15, 6))
+    dressWalls(P, ring, {
+      height: 15, wall: 'sandstone', trim: 'sandstonePlain', dark: 'dark', bay: 4.2,
+      window: { outline: roundArch(1.2, 2.6), y: 8.6, hood: roundArch(1.6, 2.85) }, cornice: true, minEdge: 9,
+    })
     const r = orientedRect(ring)
     // the plateresque façade looks onto the Patio de Escuelas
     const to = new Vector3(L.patio[0] - r.cx, 0, L.patio[1] - r.cz)

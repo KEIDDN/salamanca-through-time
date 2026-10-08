@@ -23,6 +23,12 @@ export function CameraRig({ data }: { data: CityData }) {
   useFrame(({ clock }) => {
     const t = Math.min(Math.max(world.cam, 0), 1)
     curves.at(t, pos, camTarget)
+    // dev: `__cam = { pos: [x, y, z], tgt: [x, y, z] }` frames any point of the city
+    const o = import.meta.env.DEV && (window as unknown as { __cam?: { pos: number[]; tgt: number[] } }).__cam
+    if (o) {
+      pos.fromArray(o.pos)
+      camTarget.fromArray(o.tgt)
+    }
     // a breath of handheld drift, scaled to the shot
     const dist = pos.distanceTo(camTarget)
     const e = clock.elapsedTime

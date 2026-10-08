@@ -1,6 +1,7 @@
 import { BufferAttribute, BufferGeometry, ExtrudeGeometry, Path, PlaneGeometry, Shape, Vector2 } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { SLAB_DEPTH, seeded, type CityData } from '../lib/cityData'
+import { SLAB_DEPTH, orientedRect, seeded, type CityData } from '../lib/cityData'
+import { buildingSolid, cleanRing, pointInRing, ringCentroid, type Roof, type SolidOut, type XZ } from './massing'
 import { RIVER_HALF, WATER_Y, type Terrain } from '../lib/terrain'
 
 /** Extrude an XZ footprint (world metres) into a closed prism standing on y = y0. */
@@ -21,60 +22,145 @@ export function pairs(flat: number[]) {
 }
 
 /**
- * Every OSM building, seated on the terrain and merged into one geometry.
- * Per-vertex: `color` (stone tint) and `aInfo` = (ground y, roof y, flat roof?)
+ * Every OSM building, seated on the terrain and merged into one geometry,
+ * each a closed solid with its roof (see ./massing).
+ * Per-vertex: `color` (stone tint) and `aInfo` = (ground y, eave y, flat roof?)
  * which the shader uses for façade windows, base occlusion and roof material.
  */
 export function buildCityGeometry(data: CityData, terrain: Terrain) {
   const rand = seeded(1218)
-  const parts: BufferGeometry[] = []
+  const shared = sharedEdges(data)
+  const pos: number[] = []
+  const nor: number[] = []
+  const col: number[] = []
+  const info: number[] = []
   // buildings straddling the section plane (x = 0): the only ones the cap needs
-  const cut: BufferGeometry[] = []
-  for (const b of data.buildings) {
-    const pts = pairs(b.p)
-    let lo = Infinity, cx = 0, cz = 0
-    for (const [x, z] of pts) {
-      lo = Math.min(lo, terrain.heightAt(x, z))
-      cx += x / pts.length
-      cz += z / pts.length
-    }
+  const cutPos: number[] = []
+  const out: SolidOut = { pos, nor }
+
+  data.buildings.forEach((b, bi) => {
+    const outer = cleanRing(pairs(b.p))
+    if (outer.length < 3) return
+    const holes = (b.holes ?? []).map((h) => cleanRing(pairs(h))).filter((h) => h.length >= 3)
+    let lo = Infinity
+    for (const [x, z] of outer) lo = Math.min(lo, terrain.heightAt(x, z))
+    const [cx, cz] = ringCentroid(outer)
     const ground = terrain.heightAt(cx, cz)
-    const top = ground + b.h
+    const eave = ground + b.h
     const base = lo - 0.3 // sunk a little so slopes never show a gap
-    const g = extrudeFootprint(pts, top - base, base, (b.holes ?? []).map(pairs))
-    const n = g.getAttribute('position').count
-    const col = new Float32Array(n * 3)
+    // tall blocks (the 20th-century city) get flat roofs behind a parapet instead of clay tile
+    const flat = b.h > 19 || (b.k === 0 && rand() < 0.06) ? 1 : 0
+    const width = orientedRect(outer).wid
+    const depth = Math.min(width * 0.47, 7.5)
+    const start = pos.length
+
+    const roof: Roof = flat
+      ? { type: 'parapet', height: 0.9, width: 0.35 }
+      : {
+          type: 'pitched',
+          pitch: 0.47 + rand() * 0.08, // 25–28°
+          // full slope on a street or courtyard front, none against a party wall
+          inset: (ax, az, bx, bz) => (shared(bi, ax, az, bx, bz) ? 0 : depth),
+        }
+    const ridge = buildingSolid(out, outer, holes, base, eave, roof)
+
+    if (!flat && ridge > eave + 0.8 && rand() < 0.55) {
+      // a chimney or two, standing on the slope
+      const n = 1 + (rand() < 0.3 ? 1 : 0)
+      for (let k = 0; k < n; k++) {
+        const p = outer[Math.floor(rand() * outer.length)]
+        const t = 0.55 + rand() * 0.3
+        const x = p[0] + (cx - p[0]) * t, z = p[1] + (cz - p[1]) * t
+        if (!pointInRing([x, z], outer) || holes.some((h) => pointInRing([x, z], h))) continue
+        const s = 0.35 + rand() * 0.15
+        buildingSolid(out, square(x, z, s, rand() * Math.PI), [], eave - 0.2, ridge + 0.7 + rand() * 0.6, { type: 'flat' })
+      }
+    } else if (flat && b.h > 12 && rand() < 0.6) {
+      // a stair or lift housing on the flat roof
+      const s = 1.4 + rand()
+      if (pointInRing([cx, cz], outer) && !holes.some((h) => pointInRing([cx, cz], h)))
+        buildingSolid(out, square(cx, cz, s, orientedRect(outer).angle), [], eave - 0.2, eave + 2.4, { type: 'flat' })
+    }
+
+    const n = (pos.length - start) / 3
     const v = 0.88 + rand() * 0.14
     const warm = b.k === 1 ? 1.04 : 1 + (rand() - 0.5) * 0.05
     for (let i = 0; i < n; i++) {
-      col[i * 3] = v * warm
-      col[i * 3 + 1] = v
-      col[i * 3 + 2] = v / warm
+      col.push(v * warm, v, v / warm)
+      info.push(ground, eave, flat)
     }
-    g.setAttribute('color', new BufferAttribute(col, 3))
-    // tall blocks (the 20th-century city) get flat roofs instead of clay tile
-    const flat = b.h > 19 || (b.k === 0 && rand() < 0.08) ? 1 : 0
-    const info = new Float32Array(n * 3)
-    for (let i = 0; i < n; i++) {
-      info[i * 3] = ground
-      info[i * 3 + 1] = top
-      info[i * 3 + 2] = flat
-    }
-    g.setAttribute('aInfo', new BufferAttribute(info, 3))
-    parts.push(g)
     let minX = Infinity, maxX = -Infinity
-    for (const [x] of pts) { minX = Math.min(minX, x); maxX = Math.max(maxX, x) }
-    if (minX < 0.5 && maxX > -0.5) cut.push(g)
-  }
-  const merged = mergeGeometries(parts, false)
-  const straddling = mergeGeometries(cut.map((g) => {
-    const c = new BufferGeometry()
-    c.setAttribute('position', g.getAttribute('position'))
-    return c
-  }), false)
-  parts.forEach((p) => p.dispose())
+    for (const [x] of outer) { minX = Math.min(minX, x); maxX = Math.max(maxX, x) }
+    if (minX < 0.5 && maxX > -0.5) for (let i = start; i < pos.length; i++) cutPos.push(pos[i])
+  })
+
+  const merged = new BufferGeometry()
+  merged.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3))
+  merged.setAttribute('normal', new BufferAttribute(new Float32Array(nor), 3))
+  merged.setAttribute('color', new BufferAttribute(new Float32Array(col), 3))
+  merged.setAttribute('aInfo', new BufferAttribute(new Float32Array(info), 3))
   merged.computeBoundingSphere()
+  const straddling = new BufferGeometry()
+  straddling.setAttribute('position', new BufferAttribute(new Float32Array(cutPos), 3))
   return { all: merged, cut: straddling }
+}
+
+function square(x: number, z: number, s: number, a: number): XZ[] {
+  const c = Math.cos(a) * s, d = Math.sin(a) * s
+  return [[x - c + d, z - d - c], [x + c + d, z + d - c], [x + c - d, z + d + c], [x - c - d, z - d + c]]
+}
+
+/**
+ * Party walls: an edge is shared when another building has a parallel edge
+ * running through its midpoint. Looked up in a coarse grid of all edges.
+ */
+function sharedEdges(data: CityData) {
+  const cell = 6
+  const grid = new Map<string, { b: number; ax: number; az: number; bx: number; bz: number }[]>()
+  const key = (x: number, z: number) => `${Math.floor(x / cell)},${Math.floor(z / cell)}`
+  data.buildings.forEach((bd, b) => {
+    const rings = [bd.p, ...(bd.holes ?? [])]
+    for (const r of rings)
+      for (let i = 0; i < r.length; i += 2) {
+        const j = (i + 2) % r.length
+        const e = { b, ax: r[i], az: r[i + 1], bx: r[j], bz: r[j + 1] }
+        const cells = new Set<string>()
+        const len = Math.hypot(e.bx - e.ax, e.bz - e.az)
+        for (let s = 0; s <= len; s += cell / 2) {
+          const t = len ? s / len : 0
+          cells.add(key(e.ax + (e.bx - e.ax) * t, e.az + (e.bz - e.az) * t))
+        }
+        cells.add(key(e.bx, e.bz))
+        for (const c of cells) {
+          if (!grid.has(c)) grid.set(c, [])
+          grid.get(c)!.push(e)
+        }
+      }
+  })
+  return (b: number, ax: number, az: number, bx: number, bz: number) => {
+    const len = Math.hypot(bx - ax, bz - az)
+    if (len < 0.5) return true
+    const tx = (bx - ax) / len, tz = (bz - az) / len
+    // sample a few points along the edge: shared if most of it lies on a neighbour
+    let hits = 0
+    for (const t of [0.25, 0.5, 0.75]) {
+      const mx = ax + (bx - ax) * t, mz = az + (bz - az) * t
+      const list = grid.get(key(mx, mz))
+      if (!list) continue
+      for (const e of list) {
+        if (e.b === b) continue
+        const ex = e.bx - e.ax, ez = e.bz - e.az
+        const el = Math.hypot(ex, ez)
+        if (el < 0.3 || Math.abs((ex * tx + ez * tz) / el) < 0.94) continue
+        const u = Math.max(0, Math.min(1, ((mx - e.ax) * ex + (mz - e.az) * ez) / (el * el)))
+        if (Math.hypot(e.ax + ex * u - mx, e.az + ez * u - mz) < 0.8) {
+          hits++
+          break
+        }
+      }
+    }
+    return hits >= 2
+  }
 }
 
 /**

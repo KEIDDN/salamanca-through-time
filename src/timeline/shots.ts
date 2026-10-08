@@ -15,7 +15,6 @@ const v = (x: number, y: number, z: number) => new Vector3(x, y, z)
 
 export function buildShots(data: CityData): Shot[] {
   const P = plazaFrame(data)
-  const C = P.center
   const terrain = terrainFor(data)
   /** a point `depth` metres below the street, on the section axis */
   const under = (z: number, depth: number, x = 0) => v(x, terrain.heightAt(0, z) - depth, z)
@@ -39,9 +38,11 @@ export function buildShots(data: CityData): Shot[] {
     // 1 — the model reveals itself, slowly turning
     { at: 9, pos: v(-760, 1500, -260), tgt: v(0, 0, 360) },
     // 2 — approach from the north-west
-    { at: 17, pos: v(-520, 470, -430), tgt: v(C.x, 0, C.z + 60) },
-    // 3 — Plaza Mayor in the frame
-    { at: 22.5, pos: C.clone().add(v(-170, 130, -150)), tgt: C.clone().add(v(0, 4, 0)) },
+    { at: 17, pos: v(-520, 470, -430), tgt: v(P.center.x, 0, P.center.z + 60) },
+    // 3 — Plaza Mayor in the frame: the camera swings round the west side of the square…
+    { at: 22.5, pos: P.at(-200, 140, 60), tgt: P.at(4, 0, 2) },
+    // … and comes to rest south-west of it, the Ayuntamiento facing us across the paving
+    { at: 24.4, pos: P.at(-150, 95, -110), tgt: P.at(4, 8, 16) },
     // 4 — architectural scale, above the arcades
     { at: 27.5, pos: P.at(26, 24, -26), tgt: P.at(0, 9, 34) },
     // 5 — street level, facing the Ayuntamiento
@@ -127,4 +128,4 @@ export function buildCurves(shots: Shot[]) {
 }
 
 /** Timeline positions of the keys — used by the master timeline without needing city data. */
-export const SHOT_TIMES = [0, 9, 17, 22.5, 27.5, 32, 39, 44.5, 52.5, 55.4, 58.5, 63, 68.5, 70.8, 73, 77.5, 79.6, 81.5, 84, 86.6, 86.95, 89, 91.5, 93, 96, 100]
+export const SHOT_TIMES = [0, 9, 17, 22.5, 24.4, 27.5, 32, 39, 44.5, 52.5, 55.4, 58.5, 63, 68.5, 70.8, 73, 77.5, 79.6, 81.5, 84, 86.6, 86.95, 89, 91.5, 93, 96, 100]

@@ -48,6 +48,8 @@ export const world = {
   flash: 0,
   /** the section legend (architectural drawing moment) */
   legend: 0,
+  /** the river mirrors the city (a second, half-resolution render) */
+  reflect: 0,
   /** windows lighting up after sunset */
   dusk: 0,
 

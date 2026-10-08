@@ -15,11 +15,15 @@ export function makePalette(half: Half, order: number) {
     /** plain sandstone (mouldings, small parts) */
     sandstonePlain: makeSectionMaterial({ half, kind: 'stone', base: '#f4f1eb', gold: '#e2b475', roof: '#e2b475' }),
     /** cathedral stone: same quarry, with lead-grey roofs */
-    cathedral: makeSectionMaterial({ half, kind: 'stone', base: '#f5f2ec', gold: '#ddae70', roof: '#857565', ashlar: 0.45 }),
+    cathedral: makeSectionMaterial({ half, kind: 'stone', base: '#f5f2ec', gold: '#ddae70', roof: '#9a8874', ashlar: 0.45 }),
     roof: makeSectionMaterial({ half, kind: 'stone', base: '#f0ece5', gold: '#a8644a', roof: '#a8644a' }),
     /** the bridge: granite and sandstone, greyer and older */
     granite: makeSectionMaterial({ half, kind: 'stone', base: '#f1eee8', gold: '#bba182', roof: '#c1a888', ashlar: 0.6, baseY: -22 }),
-    paving: makeSectionMaterial({ half, kind: 'stone', base: '#efebe4', gold: '#d6be9a', roof: '#d6be9a', ashlar: 0.3, baseY: -100 }),
+    paving: makeSectionMaterial({ half, kind: 'plaza', base: '#ece8e1', gold: '#cdb898', roughness: 0.86 }),
+    /** wrought iron: balconies and railings, cut out of a single panel */
+    iron: makeSectionMaterial({ half, kind: 'iron', base: '#d4cfc6', gold: '#2b2420', roughness: 0.55, metalness: 0.35, doubleSided: true, alphaToCoverage: true }),
+    /** people: white figurines in the model, dressed in the golden city */
+    figure: makeSectionMaterial({ half, kind: 'figure', base: '#f3f0ea', gold: '#5a5048', roughness: 0.9, vertexColors: true }),
     /** window voids, ironwork: invisible in the white model, deep in the golden one */
     dark: makeSectionMaterial({ half, kind: 'stone', base: '#d9d4cb', gold: '#33261d', roof: '#33261d', roughness: 0.6 }),
     foliage: makeSectionMaterial({ half, kind: 'foliage', base: '#f0eee8', gold: '#5c6a3c', roof: '#76814a', roughness: 1 }),

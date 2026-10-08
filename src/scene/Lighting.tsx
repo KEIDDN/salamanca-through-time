@@ -36,6 +36,7 @@ export function Lighting() {
     shared.uLamp.value = world.lamp
     shared.uTime.value = clock.elapsedTime
     shared.uHorizon.value.setRGB(world.sky.horizon.r, world.sky.horizon.g, world.sky.horizon.b)
+    shared.uSkyTop.value.setRGB(world.sky.top.r, world.sky.top.g, world.sky.top.b)
     shared.uDusk.value = world.dusk
 
     const el = (world.sun.elevation * Math.PI) / 180
@@ -80,7 +81,7 @@ export function Lighting() {
     h.groundColor.setRGB(world.hemi.ground.r, world.hemi.ground.g, world.hemi.ground.b)
 
     l.position.copy(camera.position)
-    l.intensity = world.lamp * 150
+    l.intensity = world.lamp * 105
     // above ground the lantern is not just dark but absent: every lit pixel skips it
     l.visible = world.lamp > 0.001
   })
