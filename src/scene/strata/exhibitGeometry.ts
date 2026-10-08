@@ -1,10 +1,14 @@
-import { BoxGeometry, BufferAttribute, BufferGeometry, CylinderGeometry, Shape, Vector2, Vector3 } from 'three'
+import { BoxGeometry, BufferAttribute, BufferGeometry, CylinderGeometry, IcosahedronGeometry, Shape, Vector2, Vector3 } from 'three'
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
+import { noise3 } from '../lib/sdf'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { seeded } from '../lib/cityData'
+import { SLAB_DEPTH, seeded } from '../lib/cityData'
+import { fracture, type Plane as FracturePlane } from '../lib/fracture'
 import type { Terrain } from '../lib/terrain'
 import { Parts, T } from '../lib/parts'
 import { archHole, extrudeShape } from '../landmarks/shapes'
 import { verraco } from '../landmarks/bridge'
+import { GALLERY_HALF } from '../../timeline/world'
 
 /**
  * What the section reveals, laid out along the axis Plaza Mayor → Tormes, each
@@ -74,20 +78,89 @@ export function exhibitsFor(terrain: Terrain): Exhibit[] {
   ]
 }
 
+/**
+ * The floor of the gallery: one excavated level per era, wall to wall, each
+ * following the slope of the ground above it, so every piece stands on the
+ * soil of its own time and the gallery steps down like a real excavation.
+ */
+export const LEVELS = [
+  { z0: 66, z1: 296, depth: 10.8 },
+  { z0: 296, z1: 650, depth: 18.9 },
+  { z0: 650, z1: 836, depth: LAYOUT.castro.depth },
+  { z0: 836, z1: 930, depth: LAYOUT.stone.depth },
+]
+
+/** A solid block whose top follows the terrain `depth` metres down, reaching to the floor of the slab. */
+function terrace(s: (z: number) => number, z0: number, z1: number, depth: number, half: number, floorY: number) {
+  const pos: number[] = []
+  const quad = (a: Vector3, b: Vector3, c: Vector3, d: Vector3, out: Vector3) => {
+    const n = new Vector3().subVectors(b, a).cross(new Vector3().subVectors(c, a))
+    const q = n.dot(out) >= 0 ? [a, b, c, a, c, d] : [a, c, b, a, d, c]
+    for (const v of q) pos.push(v.x, v.y, v.z)
+  }
+  const zs: number[] = []
+  for (let z = z0; z < z1; z += 4) zs.push(z)
+  zs.push(z1)
+  const top = (z: number) => s(z) - depth
+  const up = new Vector3(0, 1, 0)
+  for (let i = 0; i < zs.length - 1; i++) {
+    const za = zs[i], zb = zs[i + 1], ya = top(za), yb = top(zb)
+    quad(new Vector3(-half, ya, za), new Vector3(-half, yb, zb), new Vector3(half, yb, zb), new Vector3(half, ya, za), up)
+    for (const sx of [-1, 1]) {
+      const x = sx * half
+      quad(new Vector3(x, ya, za), new Vector3(x, yb, zb), new Vector3(x, floorY, zb), new Vector3(x, floorY, za), new Vector3(sx, 0, 0))
+    }
+  }
+  for (const [z, dir] of [[z0, -1], [z1, 1]] as const) {
+    const y = top(z)
+    quad(new Vector3(-half, y, z), new Vector3(half, y, z), new Vector3(half, floorY, z), new Vector3(-half, floorY, z), new Vector3(0, 0, dir))
+  }
+  const g = new BufferGeometry()
+  g.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3))
+  g.computeVertexNormals()
+  return g
+}
+
+/** Fieldstones: icosahedra pushed out of shape by noise, kept faceted like split rock. */
+function rockVariants(n: number) {
+  return Array.from({ length: n }, (_, v) => {
+    const g = new IcosahedronGeometry(1, 1)
+    const p = g.getAttribute('position')
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), y = p.getY(i), z = p.getZ(i)
+      const k = 1 + noise3(x * 1.7 + v * 13, y * 1.7, z * 1.7) * 0.28 + noise3(x * 4 + v * 7, y * 4, z * 4) * 0.08
+      p.setXYZ(i, x * k, Math.max(y * k, -0.55), z * k) // a flat bed underneath
+    }
+    g.computeVertexNormals()
+    return g
+  })
+}
+
+/** A box with chamfered arrises: dressed stone rather than a primitive. */
+export function bevelBox(w: number, h: number, d: number, r: number) {
+  const g = new RoundedBoxGeometry(w, h, d, 1, r)
+  g.deleteAttribute('uv')
+  return g
+}
+
 export function buildExhibits(terrain: Terrain) {
-  const P = new Parts<Exclude<ExhibitKey, 'bedrock'>>()
+  const P = new Parts<Exclude<ExhibitKey, 'bedrock'> | 'soil' | 'verraco'>()
   const rand = seeded(220)
   const s = (z: number) => terrain.heightAt(0, z)
+
+  for (const l of LEVELS) P.add('soil', terrace(s, l.z0, l.z1, l.depth, GALLERY_HALF - 0.25, -SLAB_DEPTH + 1))
 
   // ── medieval: the town wall, a gate the camera flies through, two towers ──
   {
     const z = LAYOUT.gate.z
-    const wall = new Shape([new Vector2(-74, -11), new Vector2(74, -11), new Vector2(74, -2.6), new Vector2(-74, -2.6)])
+    // wall to wall across the gallery, stopping just short of the cut faces
+    const W = GALLERY_HALF - 0.6
+    const wall = new Shape([new Vector2(-W, -11), new Vector2(W, -11), new Vector2(W, -2.6), new Vector2(-W, -2.6)])
     wall.holes.push(archHole(0, -10.6, 6.6, -7.2, 16))
     const wg = extrudeShape(wall, 3.2)
     P.frame(T(0, s(z), 0), () => {
       P.add('medieval', wg, T(0, 0, z))
-      for (let x = -73; x <= 73; x += 2.6) P.box('medieval', x - 0.65, -2.6, z - 1.6, x + 0.65, -1.2, z + 1.6)
+      for (let x = -W + 1.3; x <= W - 1.3; x += 2.6) P.box('medieval', x - 0.65, -2.6, z - 1.6, x + 0.65, -1.2, z + 1.6)
       for (const tx of [-11, 11]) {
         P.add('medieval', new CylinderGeometry(4.4, 4.8, 10.6, 24), T(tx, -11 + 5.3, z))
         for (let k = 0; k < 10; k++) {
@@ -145,7 +218,7 @@ export function buildExhibits(terrain: Terrain) {
 
   // ── iron age: hut circles of a Vetton castro and its verraco ─────────────
   {
-    const stone = new BoxGeometry(1, 1, 1)
+    const rocks = rockVariants(6)
     const huts = [[-16, 690, 3.6], [18, 712, 4.2], [-24, 742, 3.2], [24, 790, 3.8], [-15, 800, 4.4], [16, 822, 3.0]] as const
     for (const [hx, hz, r] of huts) {
       const y = s(hz) - LAYOUT.castro.depth
@@ -153,16 +226,18 @@ export function buildExhibits(terrain: Terrain) {
       for (let k = 0; k < n; k++) {
         const a = (k / n) * Math.PI * 2
         if (k / n > 0.04 && k / n < 0.12) continue // doorway
-        const sz = 0.45 + rand() * 0.35
-        P.add('iron', stone, T(hx + Math.cos(a) * r, y + sz * 0.4, hz + Math.sin(a) * r, -a + (rand() - 0.5) * 0.3, [0.9 + rand() * 0.5, sz, 0.55 + rand() * 0.2]))
+        // dry-stone footings: rough fieldstones, bedded slightly into the floor
+        const sz = 0.42 + rand() * 0.3
+        const rock = rocks[Math.floor(rand() * rocks.length)]
+        P.add('iron', rock, T(hx + Math.cos(a) * r, y + sz * 0.32, hz + Math.sin(a) * r, -a + (rand() - 0.5) * 0.5, [0.5 + rand() * 0.22, sz * 0.55, 0.33 + rand() * 0.1], (rand() - 0.5) * 0.3, (rand() - 0.5) * 0.3))
       }
       P.add('iron', new CylinderGeometry(r - 0.4, r - 0.4, 0.12, 24), T(hx, y + 0.06, hz))
     }
-    stone.dispose()
+    rocks.forEach((g) => g.dispose())
     const cz = LAYOUT.castro.z
     const y = s(cz) - LAYOUT.castro.depth
-    P.box('iron', 9 - 4, y - 0.6, cz - 2.4, 9 + 4, y, cz + 2.4) // display plinth
-    P.frame(T(9, y, cz, Math.PI + 0.5, 1.9), () => verraco(P, 'iron'))
+    P.add('iron', bevelBox(8, 0.6, 4.8, 0.08), T(9, y - 0.3, cz)) // display plinth
+    P.frame(T(9, y, cz, Math.PI + 0.5, 1.6), () => verraco(P, 'verraco'))
   }
 
   return P.build()
@@ -172,18 +247,35 @@ export function buildExhibits(terrain: Terrain) {
  * The hero piece: a squared block of Villamayor sandstone with a scallop shell
  * carved in relief — the motif of the Casa de las Conchas, and of the pilgrims
  * who crossed the city on the Vía de la Plata.
+ *
+ * It is built already broken: a Voronoi fracture of the chamfered block, the
+ * shards fitting exactly until the film splits them open. The shell rides on
+ * the shard it was carved into.
  */
-export function heroBlockGeometry() {
-  const parts: BufferGeometry[] = []
-  const W = 3.6, H = 2.4, D = 2.2, c = 0.12
-  const prof = new Shape([
-    new Vector2(-W / 2 + c, -H / 2), new Vector2(W / 2 - c, -H / 2), new Vector2(W / 2, -H / 2 + c), new Vector2(W / 2, H / 2 - c),
-    new Vector2(W / 2 - c, H / 2), new Vector2(-W / 2 + c, H / 2), new Vector2(-W / 2, H / 2 - c), new Vector2(-W / 2, -H / 2 + c),
-  ])
-  const block = extrudeShape(prof, D)
-  block.deleteAttribute('uv')
-  parts.push(block.toNonIndexed())
+export const HERO = { W: 3.6, H: 2.4, D: 2.2, chamfer: 0.12 }
 
+export function heroStone() {
+  const { W, H, D, chamfer: c } = HERO
+  const planes: FracturePlane[] = []
+  for (const sx of [-1, 1])
+    for (const sy of [-1, 1]) {
+      const n = new Vector3(sx, sy, 0).normalize()
+      planes.push({ n, d: (W / 2 + H / 2 - c) / Math.SQRT2 })
+    }
+  const rand = seeded(868)
+  const shellSeed = new Vector3(0, -0.2, D / 2 - 0.35)
+  const seeds = [shellSeed]
+  while (seeds.length < 17) {
+    const p = new Vector3((rand() - 0.5) * W * 0.95, (rand() - 0.5) * H * 0.95, (rand() - 0.5) * D * 0.95)
+    if (seeds.every((q) => q.distanceTo(p) > 0.55)) seeds.push(p)
+  }
+  const shards = fracture(new Vector3(W / 2, H / 2, D / 2), planes, seeds)
+  const shellIndex = shards.findIndex((sh) => sh.seed === shellSeed)
+  return { shards, shell: shellGeometry(), shellIndex }
+}
+
+function shellGeometry() {
+  const D = HERO.D
   // scallop shell on the front face (+z): a ribbed, domed fan
   const R = 1.0, ribs = 15, segR = 14, segA = 90
   const grid: Vector3[][] = []
@@ -214,13 +306,11 @@ export function heroBlockGeometry() {
     shell.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3))
     shell.computeVertexNormals()
   }
-  parts.push(shell)
   const ear = new BoxGeometry(0.62, 0.26, 0.16)
   ear.translate(0, -0.62, D / 2 + 0.06)
   ear.deleteAttribute('uv')
-  parts.push(ear.toNonIndexed())
-
-  const g = mergeGeometries(parts, false)
+  const g = mergeGeometries([shell, ear.toNonIndexed()], false)
+  g.setAttribute('aCut', new BufferAttribute(new Float32Array(g.getAttribute('position').count), 1))
   g.computeBoundingSphere()
   return g
 }

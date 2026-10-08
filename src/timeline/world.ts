@@ -13,6 +13,9 @@ export const rgb = (hex: string): RGB => {
   return { r: c.r, g: c.g, b: c.b }
 }
 
+/** Half-width of the gallery once the city is fully open (the widest `open`). */
+export const GALLERY_HALF = 46
+
 export const world = {
   /** 0 → 1 along the camera path */
   cam: 0,
@@ -39,6 +42,10 @@ export const world = {
   exhibits: [0, 0, 0, 0] as [number, number, number, number],
   /** the hero stone turning as we leave it */
   rise: 0,
+  /** the hero stone breaking open (0 whole → 1 scattered) */
+  shatter: 0,
+  /** the light that pours out of it, filling the screen */
+  flash: 0,
   /** the section legend (architectural drawing moment) */
   legend: 0,
   /** windows lighting up after sunset */

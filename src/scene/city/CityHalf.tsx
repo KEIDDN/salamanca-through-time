@@ -104,7 +104,7 @@ export function CityHalf({ data, geo, half }: { data: CityData; geo: CityGeometr
       <planeGeometry args={[z1 - z0 + 4, 140 + SLAB_DEPTH]} />
     </mesh>
     <group ref={group}>
-      <mesh geometry={geo.terrain} material={palette.ground} receiveShadow castShadow />
+      <mesh geometry={geo.terrain} material={palette.ground} receiveShadow />
       <mesh geometry={geo.river} material={palette.water} receiveShadow />
       <mesh geometry={geo.buildings} material={palette.buildings} castShadow receiveShadow />
       <group ref={capRef(0)} visible={false}>

@@ -26,11 +26,15 @@ function makeTerrain(data: CityData) {
   const byX = [...river].sort((a, b) => a[0] - b[0])
   const riverZ = (x: number) => {
     if (x <= byX[0][0]) return byX[0][1]
-    for (let i = 0; i < byX.length - 1; i++) {
-      const [ax, az] = byX[i], [bx, bz] = byX[i + 1]
-      if (x <= bx) return az + ((bz - az) * (x - ax)) / (bx - ax || 1)
+    if (x >= byX[byX.length - 1][0]) return byX[byX.length - 1][1]
+    let lo = 0, hi = byX.length - 1
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1
+      if (byX[mid][0] < x) lo = mid
+      else hi = mid
     }
-    return byX[byX.length - 1][1]
+    const [ax, az] = byX[lo], [bx, bz] = byX[hi]
+    return az + ((bz - az) * (x - ax)) / (bx - ax || 1)
   }
   const cityNorth = riverZ(0) > 0
 
@@ -50,16 +54,35 @@ function makeTerrain(data: CityData) {
     return { d: Math.sqrt(best), side }
   }
 
-  function heightAt(x: number, z: number) {
-    const { d, side } = riverInfo(x, z)
+  function profile(d: number, side: number) {
     if (d < RIVER_HALF) return -PLATEAU_DROP - 2.5 * (1 - d / RIVER_HALF) ** 0.5
     const e = d - RIVER_HALF
     if (side === 1) return -PLATEAU_DROP * (1 - smooth(e / CITY_SLOPE))
     return -PLATEAU_DROP + 4.5 * smooth(e / 90) + 5 * smooth((e - 260) / 500)
   }
 
-  // height texture for the shaders (strata are measured from the local surface)
+  // The distance to the river is exact on a coarse grid and interpolated in
+  // between: every later height query is O(1) instead of a walk along the
+  // whole river (tens of thousands of queries while the city is built).
   const { x0, x1, z0, z1 } = data.slab
+  const DG = 16
+  const gx0 = x0 - DG * 2, gz0 = z0 - DG * 2
+  const GW = Math.ceil((x1 - x0) / DG) + 5
+  const GH = Math.ceil((z1 - z0) / DG) + 5
+  const distGrid = new Float32Array(GW * GH)
+  for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) distGrid[j * GW + i] = riverInfo(gx0 + i * DG, gz0 + j * DG).d
+
+  function heightAt(x: number, z: number) {
+    const fx = Math.min(Math.max((x - gx0) / DG, 0), GW - 1.001)
+    const fz = Math.min(Math.max((z - gz0) / DG, 0), GH - 1.001)
+    const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j
+    const k = j * GW + i
+    const d =
+      (distGrid[k] * (1 - u) + distGrid[k + 1] * u) * (1 - v) + (distGrid[k + GW] * (1 - u) + distGrid[k + GW + 1] * u) * v
+    return profile(d, (z < riverZ(x)) === cityNorth ? 1 : 0)
+  }
+
+  // height texture for the shaders (strata are measured from the local surface)
   const res = 4
   const W = Math.ceil((x1 - x0) / res) + 1
   const H = Math.ceil((z1 - z0) / res) + 1

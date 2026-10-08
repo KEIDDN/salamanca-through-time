@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { PerformanceMonitor } from '@react-three/drei'
-import { ACESFilmicToneMapping, Fog, PCFShadowMap } from 'three'
+import { ACESFilmicToneMapping, Fog, PCFShadowMap, type Object3D, type PointLight, type SpotLight } from 'three'
 import type { CityData } from './lib/cityData'
 import { SLAB_DEPTH, plazaFrame } from './lib/cityData'
 import { terrainFor } from './lib/terrain'
@@ -23,7 +22,8 @@ import { world } from '../timeline/world'
 
 const flags = new URLSearchParams(location.search)
 const flag = (k: string) => import.meta.env.DEV && flags.get(k) === '0'
-const DPR_HIGH = Math.min(window.devicePixelRatio || 1, 1.75)
+const DPR_MAX = Math.min(window.devicePixelRatio || 1, 1.75)
+const DPR_MIN = 0.85
 
 /**
  * The 3D film. No post-processing stack: occlusion is baked, anti-aliasing is
@@ -31,7 +31,6 @@ const DPR_HIGH = Math.min(window.devicePixelRatio || 1, 1.75)
  * are CSS layers — the GPU spends its time on the city.
  */
 export function Experience({ data }: { data: CityData }) {
-  const [dpr, setDpr] = useState(DPR_HIGH)
   const geo = useMemo<CityGeometries>(() => {
     const terrain = terrainFor(data)
     const P = plazaFrame(data)
@@ -64,7 +63,7 @@ export function Experience({ data }: { data: CityData }) {
     <Canvas
       className="stage"
       shadows={flag('shadow') ? false : { type: PCFShadowMap }}
-      dpr={dpr}
+      dpr={Math.min(DPR_MAX, 1.4)}
       gl={{ antialias: true, powerPreference: 'high-performance', stencil: true }}
       camera={{ fov: 30, near: 2, far: 9000, position: [0, 2700, 400] }}
       onCreated={({ gl, scene }) => {
@@ -74,14 +73,7 @@ export function Experience({ data }: { data: CityData }) {
         scene.fog = new Fog('#ebe6dd', 2200, 3600)
       }}
     >
-      <PerformanceMonitor
-        // only step down when the film is genuinely struggling, not for one heavy beat
-        bounds={() => [40, 57]}
-        flipflops={4}
-        onDecline={() => setDpr((d) => Math.max(1, d - 0.25))}
-        onIncline={() => setDpr((d) => Math.min(DPR_HIGH, d + 0.25))}
-        onFallback={() => setDpr(1)}
-      />
+      <AdaptiveResolution />
       <Precompile />
       <FogDriver />
       <CameraRig data={data} />
@@ -108,12 +100,71 @@ function Abyss({ data }: { data: CityData }) {
   )
 }
 
-/** Compile every program up front so no shader is built mid-scroll. */
+/**
+ * Resolution follows the frame time: the film must stay fluid, so pixels are
+ * the first thing it gives up. A frame that misses the display's refresh steps
+ * the resolution down; a long run of frames that make it steps it back up,
+ * but never straight back to a level that just failed. Steps are small and
+ * rare, since each one reallocates the drawing buffer.
+ */
+function AdaptiveResolution() {
+  const setDpr = useThree((s) => s.setDpr)
+  const st = useRef({ dpr: Math.min(DPR_MAX, 1.4), sum: 0, n: 0, wait: 1.5, good: 0, ceiling: DPR_MAX, ceilingUntil: 0, clock: 0 })
+  useFrame((_, delta) => {
+    const s = st.current
+    if (delta > 0.2) return // a hidden tab or a hitch is not a trend
+    s.clock += delta
+    s.wait -= delta
+    s.sum += delta
+    s.n++
+    if (s.n < 24) return
+    const avg = s.sum / s.n
+    s.sum = 0
+    s.n = 0
+    if (s.wait > 0) return
+    let next = s.dpr
+    if (avg > 1 / 50) {
+      next = Math.max(DPR_MIN, s.dpr - (avg > 1 / 35 ? 0.2 : 0.1))
+      s.ceiling = s.dpr
+      s.ceilingUntil = s.clock + 12
+      s.good = 0
+    } else if (avg < 1 / 57 && ++s.good >= 6) {
+      const cap = s.clock < s.ceilingUntil ? s.ceiling - 0.1 : DPR_MAX
+      if (s.dpr + 0.1 <= cap + 1e-6) next = s.dpr + 0.1
+      s.good = 0
+    }
+    if (next !== s.dpr) {
+      s.wait = next < s.dpr ? 0.6 : 2
+      s.dpr = next
+      setDpr(next)
+    }
+  })
+  return null
+}
+
+/**
+ * Compile every program up front so no shader is built mid-scroll — for both
+ * light setups (the underground lantern and museum spot only exist below ground).
+ */
 function Precompile() {
   const { gl, scene, camera } = useThree()
   useEffect(() => {
-    gl.compile(scene, camera)
+    const lamps: Object3D[] = []
+    scene.traverse((o) => (o as PointLight).isPointLight || (o as SpotLight).isSpotLight ? lamps.push(o) : undefined)
+    // in parallel where the driver allows it, so the page never freezes on it
+    const set = (on: boolean) => lamps.forEach((l) => (l.visible = on))
+    let alive = true
+    ;(async () => {
+      set(true)
+      await gl.compileAsync(scene, camera)
+      if (!alive) return
+      set(false)
+      await gl.compileAsync(scene, camera)
+    })()
     if (import.meta.env.DEV) Object.assign(window, { __three: { gl, scene, camera } })
+    return () => {
+      alive = false
+    }
   }, [gl, scene, camera])
   return null
 }

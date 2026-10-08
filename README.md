@@ -25,11 +25,15 @@ The city is the interface. A white architectural model of Salamanca's real stree
 | The section: the city is rendered as two halves clipped against a moving plane, closed with **stencil capping**. Back faces increment and front faces decrement the stencil, and one quad on the plane paints poché or strata wherever the plane lies inside matter. It stays exact even with overlapping OSM solids. Only geometry that crosses the plane is stencilled | `src/scene/materials/section.ts`, `src/scene/city/CityHalf.tsx` |
 | Façades: procedural windows, shopfronts and cornices from per-building data, lit at dusk; clay-tile and flat roofs; sandstone grain | `src/scene/materials/section.ts` |
 | Villamayor sandstone: object-space grain, Liesegang oxide bands and chisel bump, carved scallop shell | `src/scene/materials/villamayor.ts`, `src/scene/strata/exhibitGeometry.ts` |
+| The verraco, sculpted rather than assembled: a signed distance field of smooth-blended primitives, meshed once with surface nets, in weathered granite | `src/scene/lib/sdf.ts`, `src/scene/landmarks/verraco.ts`, `src/scene/materials/granite.ts` |
+| The stone breaks: the hero block is pre-fractured (Voronoi cells clipped from its planes), its cracks light from inside, the shards drift apart and the light fills the screen — a hidden cut to the Tormes at sunset | `src/scene/lib/fracture.ts`, `src/scene/strata/Exhibits.tsx`, `src/timeline/shots.ts` |
 | Museum: wall lettering per layer (troika SDF text), section legend, hover markers | `src/scene/strata/` |
 | White model → golden city: every material is a (base, gold) pair on shared uniforms, so the timeline changes the whole city with a single value | `src/scene/materials/palette.ts` |
 | Exhibits in the section (wall and gate, Roman road, castro and verraco, rising sandstone blocks) under one travelling museum light | `src/scene/strata/` |
 | Camera: Catmull-Rom paths for eye and target | `src/timeline/shots.ts` |
-| Master timeline (0–100 = the whole scroll) | `src/timeline/master.ts` |
+| Master timeline (0–100 = the whole film) | `src/timeline/master.ts` |
+| Rhythm: scroll slows the film at each rest (a caption, the section legend), a scroll that stops near one settles onto it, and ↓ / ↑ / space step from rest to rest | `src/timeline/rhythm.ts`, `src/timeline/useScrollTimeline.ts` |
+| The gallery floor: one excavated level per era, wall to wall, so every piece stands on the soil of its time | `src/scene/strata/exhibitGeometry.ts` |
 | Copy and the year readout | `src/content/story.ts` |
 | HUD and typography | `src/ui/`, `src/styles/global.css` |
 
@@ -44,7 +48,7 @@ In dev, `__seek(45)` in the console jumps to any point of the film (0–100), an
 
 ## Performance
 
-There is no post-processing stack. Occlusion is baked: a blurred footprint map for the ground and a base gradient on the walls. Anti-aliasing is native MSAA, tone mapping happens in the materials, and vignette and grain are CSS layers. The sun's shadow frustum follows the camera and is snapped to texels. The city renders once while it is whole, and the device pixel ratio adapts. On an Apple M1 in Chrome it holds 60 fps at retina resolution for nearly the whole film.
+Resolution adapts to the frame time in small, rare steps. The underground lights only exist underground, both light setups are compiled up front (asynchronously), and terrain heights come from a precomputed river-distance grid. There is no post-processing stack. Occlusion is baked: a blurred footprint map for the ground and a base gradient on the walls. Anti-aliasing is native MSAA, tone mapping happens in the materials, and vignette and grain are CSS layers. The sun's shadow frustum follows the camera and is snapped to texels. The city renders once while it is whole, and the device pixel ratio adapts. On an Apple M1 in Chrome it holds 60 fps at retina resolution for nearly the whole film.
 
 ### Rebuilding the city data
 

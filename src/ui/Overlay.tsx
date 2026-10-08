@@ -30,6 +30,7 @@ export function Overlay({ ready }: { ready: boolean }) {
     <div className="overlay">
       <div className="film" aria-hidden />
       <div className="veil" data-veil />
+      <div className="flash" data-flash />
 
       <header className="hud hud--top">
         <span className="brand">Salamanca</span>

@@ -54,7 +54,7 @@ body {
 
 .scroll-track {
   position: relative;
-  height: 1500vh;
+  height: 2200vh; /* set from the film's rhythm in App */
   pointer-events: none;
 }
 
@@ -119,6 +119,15 @@ body {
   position: absolute;
   inset: 0;
   background: var(--paper);
+}
+
+/* the light pouring out of the broken stone */
+.flash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  background: radial-gradient(circle at 50% 46%, #fffaf0 0%, #ffeccc 38%, #f7cf95 100%);
 }
 
 .line {
@@ -338,6 +347,17 @@ body {
   text-align: center;
   max-width: min(900px, calc(100vw - var(--gutter) * 2));
 }
+.beat--top {
+  left: 0;
+  right: 0;
+  top: 12vh;
+  margin-inline: auto;
+  text-align: center;
+  max-width: min(1100px, calc(100vw - var(--gutter) * 2));
+}
+.beat--top .beat__body {
+  margin-inline: auto;
+}
 .beat--left {
   left: var(--gutter);
   top: 50%;
@@ -473,11 +493,13 @@ body {
   line-height: 1.55;
   opacity: 0.85;
 }
-.marker--open .marker__label {
+.marker--open .marker__label,
+.marker--lit .marker__label {
   max-width: 300px;
   opacity: 1;
 }
-.marker--open .marker__dot {
+.marker--open .marker__dot,
+.marker--lit .marker__dot {
   transform: scale(1.12);
   background: rgb(246 239 227 / 0.9);
   color: #1b1713;

@@ -5,25 +5,42 @@ import { Color, MeshStandardMaterial } from 'three'
  * bands the stone is known for, and the bite of the claw chisel — all
  * procedural, in object space so the pattern turns with the block.
  */
-export function makeVillamayorMaterial() {
+/** How brightly the cracks of the broken block glow (0 = whole stone). */
+export const crack = { value: 0 }
+
+/**
+ * `broken`: the material of the fractured hero block, whose geometry flags
+ * fracture faces with `aCut` — fresh, paler stone, lit from inside.
+ */
+export function makeVillamayorMaterial({ broken = false } = {}) {
   const mat = new MeshStandardMaterial({ color: '#ffffff', roughness: 0.94, metalness: 0 })
   const uniforms = {
     uSand: { value: new Color('#c4904f') },
     uOxide: { value: new Color('#8f4a26') },
     uPale: { value: new Color('#d9bb88') },
+    uCrack: crack,
   }
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms)
+    if (broken) shader.defines = { ...(shader.defines ?? {}), BROKEN: '' }
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vObj;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObj = position;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vObj;\n#ifdef BROKEN\nattribute float aCut;\nvarying float vCut;\n#endif')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObj = position;\n#ifdef BROKEN\nvCut = aCut;\n#endif')
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
         /* glsl */ `#include <common>
         uniform vec3 uSand, uOxide, uPale;
+        uniform float uCrack;
         varying vec3 vObj;
-        float vHash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+        #ifdef BROKEN
+          varying float vCut;
+        #endif
+        float vHash(vec3 p3) {
+          p3 = fract(p3 * 0.1031);
+          p3 += dot(p3, p3.zyx + 31.32);
+          return fract((p3.x + p3.y) * p3.z);
+        }
         float vNoise(vec3 p) {
           vec3 i = floor(p), f = fract(p);
           vec3 u = f * f * (3.0 - 2.0 * f);
@@ -33,9 +50,11 @@ export function makeVillamayorMaterial() {
         float vFbm(vec3 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 4; i++) { s += a * vNoise(p); p *= 2.07; a *= 0.5; } return s; }
         float stoneHeight(vec3 p) {
           float grain = vFbm(p * 26.0) * 0.5;
-          // claw-chisel strokes, slightly wandering
-          float stroke = sin(p.x * 46.0 + p.y * 9.0 + vNoise(p * 3.0) * 4.0);
-          float chisel = smoothstep(0.55, 1.0, stroke) * 0.6;
+          // the bite of the claw chisel: short, scattered pocks rather than stripes
+          float chisel = smoothstep(0.62, 0.95, vNoise(p * vec3(16.0, 7.0, 16.0) + vNoise(p * 2.0) * 2.0)) * 0.35;
+          #ifdef BROKEN
+            chisel *= 1.0 - vCut; // fresh fractures were never dressed
+          #endif
           return grain + chisel * (1.0 - smoothstep(0.9, 1.15, abs(p.z) * 0.9));
         }
         vec3 perturbStone(vec3 surfPos, vec3 surfNorm, float h) {
@@ -62,6 +81,10 @@ export function makeVillamayorMaterial() {
           c = mix(c, uPale, pale);
           c = mix(c, uOxide, oxide * 0.55);
           c *= 0.92 + 0.08 * vNoise(p * 40.0); // the sparkle of the grain
+          #ifdef BROKEN
+            // inside, the stone has never seen the air: paler, not yet gold
+            c = mix(c, mix(uSand, uPale, 0.35) * (0.9 + 0.14 * vNoise(p * 9.0)), vCut * 0.75);
+          #endif
           diffuseColor.rgb = c;
         }`,
       )
@@ -70,7 +93,15 @@ export function makeVillamayorMaterial() {
         `#include <normal_fragment_maps>
         normal = perturbStone(-vViewPosition, normal, stoneHeight(vObj));`,
       )
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+        #ifdef BROKEN
+          // the stone itself glowing (tinted by its own colour), not a white light
+          totalEmissiveRadiance += diffuseColor.rgb * vec3(1.5, 0.95, 0.5) * uCrack * vCut * (0.6 + 0.4 * vNoise(vObj * 6.0));
+        #endif`,
+      )
   }
-  mat.customProgramCacheKey = () => 'villamayor'
+  mat.customProgramCacheKey = () => (broken ? 'villamayor-broken' : 'villamayor')
   return mat
 }

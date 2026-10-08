@@ -22,8 +22,7 @@ export function CameraRig({ data }: { data: CityData }) {
 
   useFrame(({ clock }) => {
     const t = Math.min(Math.max(world.cam, 0), 1)
-    curves.pos.getPoint(t, pos)
-    curves.tgt.getPoint(t, camTarget)
+    curves.at(t, pos, camTarget)
     // a breath of handheld drift, scaled to the shot
     const dist = pos.distanceTo(camTarget)
     const e = clock.elapsedTime

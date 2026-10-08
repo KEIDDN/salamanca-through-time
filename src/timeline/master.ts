@@ -1,5 +1,5 @@
 import gsap from 'gsap'
-import { rgb, world } from './world'
+import { GALLERY_HALF, rgb, world } from './world'
 import { SHOT_TIMES } from './shots'
 import { beats, yearKeys } from '../content/story'
 import { createHudSync } from '../ui/hud'
@@ -10,15 +10,29 @@ import { createHudSync } from '../ui/hud'
  * reads as one continuous shot.
  */
 export function buildMasterTimeline(root: HTMLElement) {
-  const tl = gsap.timeline({ paused: true, defaults: { ease: 'none' }, onUpdate: createHudSync(root) })
+  const hud = createHudSync(root)
+  const tl = gsap.timeline({
+    paused: true,
+    defaults: { ease: 'none' },
+    onUpdate: () => {
+      hud()
+      root.style.setProperty('--progress', tl.totalProgress().toFixed(4))
+    },
+  })
   tl.set({}, {}, 100) // fix total length
 
   // ── camera ──────────────────────────────────────────────────────────────
   const n = SHOT_TIMES.length - 1
   for (let i = 0; i < n; i++) {
     const a = SHOT_TIMES[i], b = SHOT_TIMES[i + 1]
-    // ease into the first move and the street-level hold, glide everywhere else
-    const ease = i === 0 ? 'sine.in' : i === 5 || i === 14 ? 'sine.inOut' : i === n - 1 ? 'sine.out' : 'none'
+    // glide everywhere; ease into the first move and the holds (street level,
+    // the section drawing — arriving 7, held 8, leaving 9 — and the stone)
+    const ease =
+      i === 0 ? 'sine.in'
+      : i === 5 || i === 8 || i === 17 ? 'sine.inOut'
+      : i === 7 || i === n - 1 ? 'sine.out'
+      : i === 9 || i === 18 ? 'sine.in'
+      : 'none'
     tl.fromTo(world, { cam: i / n }, { cam: (i + 1) / n, duration: b - a, ease, immediateRender: i === 0 }, a)
   }
   tl.to(world, { fov: 26, duration: 10, ease: 'sine.inOut' }, 8)
@@ -55,11 +69,11 @@ export function buildMasterTimeline(root: HTMLElement) {
   tl.to(world, { cutGlow: 1, duration: 1.5, ease: 'sine.out' }, 45)
   tl.to(world, { cut: 1, duration: 3.5, ease: 'power2.inOut' }, 45)
   tl.to(world, { strata: 1, duration: 4 }, 46.5)
-  tl.to(world, { open: 46, duration: 6.5, ease: 'power3.inOut' }, 47.5)
+  tl.to(world, { open: GALLERY_HALF, duration: 6.5, ease: 'power3.inOut' }, 47.5)
   tl.to(world, { cutGlow: 0, duration: 3 }, 49.5)
   // the drawing: each layer annotated, then the legend clears for the descent
-  tl.to(world, { legend: 1, duration: 3.5 }, 52.5)
-  tl.to(world, { legend: 0, duration: 1.5 }, 57.5)
+  tl.to(world, { legend: 1, duration: 2.6 }, 51.6)
+  tl.to(world, { legend: 0, duration: 1.2 }, 56.6)
 
   // ── darkness: entering the ground ────────────────────────────────────────
   const dark = 56.8
@@ -76,23 +90,30 @@ export function buildMasterTimeline(root: HTMLElement) {
   tl.to(ex, { 1: 1, duration: 2.5 }, 65).to(ex, { 1: 0.12, duration: 3 }, 72)
   tl.to(ex, { 2: 1, duration: 2.5 }, 72).to(ex, { 2: 0.12, duration: 3 }, 79.5)
   tl.to(ex, { 3: 1, duration: 3 }, 79)
-  tl.to(world, { rise: 1, duration: 6, ease: 'sine.inOut' }, 82)
+  tl.to(world, { rise: 1, duration: 2.2, ease: 'sine.inOut' }, 82)
 
-  // ── sunset: back to the surface ──────────────────────────────────────────
-  const up = 86
+  // ── the stone breaks open, and its light carries us to the surface ───────
+  tl.to(world, { shatter: 1, duration: 2.7 }, 84.3)
+  // the lantern dims: from here the light is the stone's own
+  tl.to(world, { lamp: 0.03, duration: 0.6, ease: 'sine.inOut' }, 84.3)
+  tl.to(world, { flash: 1, duration: 0.85, ease: 'power2.in' }, 85.9)
+  tl.to(world, { flash: 0, duration: 1.5, ease: 'sine.out' }, 87.0)
+
+  // ── sunset: back to the surface, all of it set while the screen is light ─
+  const up = 86.7
+  const now = 0.2
   tl.set(sun, { elevation: 6, azimuth: 150 }, up)
-  tl.to(sun, { intensity: 4.4, duration: 4, ease: 'sine.out' }, up)
-  tl.to(sun.color, { ...rgb('#ffa05a'), duration: 0.01 }, up)
-  tl.to(world.hemi, { intensity: 0.6, duration: 4 }, up)
-  tl.to(world.hemi.sky, { ...rgb('#8088ab'), duration: 4 }, up)
-  tl.to(world.hemi.ground, { ...rgb('#8a5a3a'), duration: 4 }, up)
-  tl.to(world.sky.top, { ...rgb('#2a3352'), duration: 4.5 }, up)
-  tl.to(world.sky.horizon, { ...rgb('#f3a862'), duration: 4.5 }, up)
-  tl.to(world.sky, { glow: 1, duration: 5 }, up)
-  tl.to(world.fog, { near: 700, far: 4200, duration: 4.5 }, up)
-  tl.to(world, { capAmbient: 0.75, lamp: 0, duration: 4 }, up)
-  tl.to(ex, { 3: 0, duration: 3 }, up + 0.5)
-  tl.to(world, { open: 0, duration: 2.6, ease: 'power2.inOut' }, 87.6)
+  tl.to(sun, { intensity: 4.4, duration: now }, up)
+  tl.to(sun.color, { ...rgb('#ffa05a'), duration: now }, up)
+  tl.to(world.hemi, { intensity: 0.6, duration: now }, up)
+  tl.to(world.hemi.sky, { ...rgb('#8088ab'), duration: now }, up)
+  tl.to(world.hemi.ground, { ...rgb('#8a5a3a'), duration: now }, up)
+  tl.to(world.sky.top, { ...rgb('#2a3352'), duration: now }, up)
+  tl.to(world.sky.horizon, { ...rgb('#f3a862'), duration: now }, up)
+  tl.to(world.sky, { glow: 1, duration: now }, up)
+  tl.to(world.fog, { near: 700, far: 4200, duration: now }, up)
+  tl.to(world, { capAmbient: 0.75, lamp: 0, open: 0, duration: now }, up)
+  tl.to(ex, { 3: 0, duration: now }, up)
   tl.to(world, { dusk: 1, duration: 7, ease: 'sine.in' }, 93)
   tl.to(sun, { elevation: 3, intensity: 3.6, duration: 6 }, 94)
 

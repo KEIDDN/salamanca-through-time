@@ -11,6 +11,7 @@ import { setOpening, shared } from './materials/section'
  * so shadows stay crisp from 2.7 km up down to street level.
  */
 const MAP = 2048
+const SPAN_STEP = 1.08
 const tmp = { d: new Vector3(), r: new Vector3(), u: new Vector3(), c: new Vector3(), up: new Vector3(0, 1, 0) }
 
 export function Lighting() {
@@ -45,10 +46,13 @@ export function Lighting() {
     camera.updateMatrixWorld()
     shared.uViewProj.value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
 
-    // shadow frustum around what the camera looks at, snapped to whole texels
-    // in light space so shadow edges do not crawl while the camera moves
+    // shadow frustum around what the camera looks at. Its size moves in
+    // discrete 8% steps and its centre snaps to whole texels in light space,
+    // so between steps the shadow map is rasterised identically from frame to
+    // frame and edges hold still instead of swimming as the camera travels.
     const dist = camera.position.distanceTo(camTarget)
-    const span = Math.min(Math.max(dist * 0.85, 70), 1500)
+    const want = Math.min(Math.max(dist * 0.85, 60), 1500)
+    const span = 60 * SPAN_STEP ** Math.ceil(Math.log(want / 60) / Math.log(SPAN_STEP))
     const texel = (2 * span) / MAP
     tmp.r.crossVectors(tmp.up, dir).normalize()
     tmp.u.crossVectors(dir, tmp.r).normalize()
@@ -60,11 +64,14 @@ export function Lighting() {
     s.position.copy(c).addScaledVector(dir, 2500)
     s.target.updateMatrixWorld()
     const sc = s.shadow.camera
-    if (Math.abs(sc.right - span) > 1) {
+    if (sc.right !== span) {
       sc.left = -span; sc.right = span; sc.top = span; sc.bottom = -span
       sc.updateProjectionMatrix()
     }
-    s.shadow.normalBias = 0.02 + span * 0.0006
+    s.shadow.normalBias = texel * 1.1
+    // underground there is no sun: stop re-rendering its shadow map (but
+    // always render it once — an unallocated map fails every shadowed draw)
+    s.shadow.autoUpdate = world.sun.intensity > 0.01 || !s.shadow.map
     s.intensity = world.sun.intensity
     s.color.setRGB(world.sun.color.r, world.sun.color.g, world.sun.color.b)
 
@@ -74,6 +81,8 @@ export function Lighting() {
 
     l.position.copy(camera.position)
     l.intensity = world.lamp * 150
+    // above ground the lantern is not just dark but absent: every lit pixel skips it
+    l.visible = world.lamp > 0.001
   })
 
   return (
@@ -82,12 +91,13 @@ export function Lighting() {
         ref={sun}
         castShadow
         shadow-mapSize={[MAP, MAP]}
-        shadow-bias={-0.0002}
+        shadow-bias={-0.0001}
+        shadow-radius={2.2}
         shadow-camera-near={10}
         shadow-camera-far={6000}
       />
       <hemisphereLight ref={hemi} />
-      <pointLight ref={lamp} color="#ffd9a8" distance={180} decay={1.6} intensity={0} />
+      <pointLight ref={lamp} color="#ffd9a8" distance={180} decay={1.6} intensity={0} visible={false} />
     </>
   )
 }

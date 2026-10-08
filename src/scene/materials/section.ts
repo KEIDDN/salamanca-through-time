@@ -81,7 +81,7 @@ export const shared = {
   uAoRect: { value: new Vector4() },
 }
 
-export type SectionKind = 'building' | 'ground' | 'stone' | 'water' | 'foliage'
+export type SectionKind = 'building' | 'ground' | 'stone' | 'water' | 'foliage' | 'soil'
 
 export type SectionOptions = {
   half: Half
@@ -112,7 +112,12 @@ const GLSL_COMMON = /* glsl */ `
   uniform vec4 uAoRect;
   uniform float uOffset;
 
-  float sHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  // sin-free hash (Hoskins): stable at large world coordinates, cheaper on every GPU
+  float sHash(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+  }
   float sNoise(vec2 p) {
     vec2 i = floor(p), f = fract(p);
     vec2 u = f * f * (3.0 - 2.0 * f);
@@ -141,9 +146,10 @@ const GLSL_COMMON = /* glsl */ `
     else if (d < 20.0) c = vec3(0.60, 0.35, 0.23);   // roman
     else if (d < 30.0) c = vec3(0.33, 0.27, 0.22);   // iron age
     else               c = vec3(0.84, 0.63, 0.34);   // Villamayor sandstone
-    float g = sNoise(vec2(h * 0.35, p.y * 1.4)) * 0.6 + sNoise(vec2(h * 2.1, p.y * 5.0)) * 0.4;
-    c *= 0.9 + 0.18 * g;
-    c *= 0.96 + 0.04 * sin(p.y * 7.0 + sNoise(vec2(h * 0.05, p.y)) * 3.0); // laminations
+    // soil, not wood: near-isotropic clods and grit, only faint bedding
+    float g = sNoise(vec2(h * 0.5, p.y * 0.8)) * 0.5 + sNoise(vec2(h * 2.6, p.y * 3.2)) * 0.3 + sNoise(vec2(h * 9.0, p.y * 9.5)) * 0.2;
+    c *= 0.88 + 0.22 * g;
+    c *= 0.975 + 0.025 * sin(p.y * 7.0 + sNoise(vec2(h * 0.05, p.y)) * 3.0); // laminations
     float pebble = step(0.965, sHash(floor(vec2(h * 1.4, p.y * 2.0))));
     c *= 1.0 - 0.1 * pebble;
     if (d > 30.0) c *= 0.95 + 0.05 * sin(p.y * 1.9 + sNoise(vec2(h * 0.01, p.y * 0.2)) * 2.0);
@@ -165,6 +171,7 @@ const FRONT_PARS = /* glsl */ `
   uniform vec3 uRoof;
   uniform float uAshlar;
   uniform float uBaseY;
+  uniform float uLamp;
   varying vec3 vWorldPos;
   varying vec3 vWorldNormal;
   varying vec3 vInfo;
@@ -195,7 +202,8 @@ const FRONT_COLOR = /* glsl */ `
     vec3 p = vWorldPos - vec3(uOffset, 0.0, 0.0);
     vec3 col = mix(uBase, uGoldCol, uGold);
     // sandstone grain, stronger in the golden city
-    float grain = sFbm(p.xz * 0.9 + p.y * 0.7);
+    vec2 gp = p.xz * 0.9 + p.y * 0.7;
+    float grain = sNoise(gp) * 0.67 + sNoise(gp * 2.03) * 0.33;
     col *= 1.0 + (grain - 0.5) * 0.12 * uGold;
 
     #ifdef SECTION_BUILDING
@@ -262,6 +270,18 @@ const FRONT_COLOR = /* glsl */ `
       }
     #endif
 
+    #ifdef SECTION_SOIL
+      // the excavated floors of the gallery: trodden earth on top, the
+      // same strata as the cut faces on every riser
+      if (abs(wn.y) < 0.5) {
+        col = strataColor(p, 1.0);
+      } else {
+        float clod = sFbm(p.xz * 0.35) * 0.6 + sNoise(p.xz * 3.1) * 0.25 + sNoise(p.xz * 11.0) * 0.15;
+        col = uBase * (0.72 + 0.5 * clod);
+        col = mix(col, strataColor(p + vec3(0.0, -0.5, 0.0), 1.0) * 0.7, 0.35);
+      }
+    #endif
+
     col *= tint;
     diffuseColor.rgb = col;
   }
@@ -324,7 +344,11 @@ export function makeSectionMaterial(o: SectionOptions) {
       .replace(
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
-        totalEmissiveRadiance += vec3(1.0, 0.58, 0.26) * sWinLit * uDusk * 2.2;`,
+        totalEmissiveRadiance += vec3(1.0, 0.58, 0.26) * sWinLit * uDusk * 2.2;
+        #ifdef SECTION_SOIL
+          // the same lantern falloff as the cut faces, so floor and walls read as one excavation
+          totalEmissiveRadiance += diffuseColor.rgb * uLamp * (exp(-length(vWorldPos - cameraPosition) * 0.011) * 0.75 + 0.08);
+        #endif`,
       )
       .replace(
         '#include <opaque_fragment>',

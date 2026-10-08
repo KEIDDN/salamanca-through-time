@@ -4,7 +4,7 @@
  * `in` / `out` are positions on the master timeline (0–100 = full scroll).
  * Placement is deliberately sparse: the city is the interface, text is a caption.
  */
-export type BeatPlacement = 'center' | 'left' | 'right' | 'low-left' | 'low-right'
+export type BeatPlacement = 'center' | 'top' | 'left' | 'right' | 'low-left' | 'low-right'
 
 export type Beat = {
   id: string
@@ -40,7 +40,7 @@ export const beats: Beat[] = [
     id: 'golden',
     in: 30.5,
     out: 39,
-    placement: 'center',
+    placement: 'top',
     display: true,
     eyebrow: 'Villamayor sandstone',
     title: ['The Golden City'],
@@ -95,7 +95,7 @@ export const beats: Beat[] = [
   {
     id: 'bedrock',
     in: 80.5,
-    out: 85.5,
+    out: 84.9,
     placement: 'low-left',
     eyebrow: 'Beneath it all',
     title: ['The stone itself.'],
@@ -150,8 +150,8 @@ export const yearKeys: [number, number][] = [
   [75, -220],
   [79.5, -400],
   [82, -40_000_000],
-  [85.5, -40_000_000],
-  [87.5, -500],
+  [86.7, -40_000_000],
+  [86.75, 100], // through the light, straight to Roman Salmantica
   [91, 100],
   [96, 2026],
 ]

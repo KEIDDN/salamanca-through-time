@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { loadCity, type CityData } from './scene/lib/cityData'
 import { Overlay } from './ui/Overlay'
 import { useScrollTimeline } from './timeline/useScrollTimeline'
+import { SCROLL_STRETCH } from './timeline/rhythm'
 
 const Experience = lazy(() => import('./scene/Experience').then((m) => ({ default: m.Experience })))
 
@@ -31,7 +32,8 @@ export default function App() {
     <div ref={root} className="app">
       <Suspense fallback={null}>{data && <Experience data={data} />}</Suspense>
       <Overlay ready={ready} />
-      <div ref={track} className="scroll-track" />
+      {/* the rests lengthen the page; the pace between them stays a little brisker than before */}
+      <div ref={track} className="scroll-track" style={{ height: `${Math.round(1350 * SCROLL_STRETCH)}vh` }} />
     </div>
   )
 }
